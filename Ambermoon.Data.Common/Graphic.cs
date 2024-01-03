@@ -12,7 +12,8 @@ namespace Ambermoon.Data
         Palette3Bit,
         Texture4Bit,
         XRGB16,
-        RGBA32
+        RGBA32,
+        AttachedSprite
     }
 
     public struct GraphicInfo
@@ -32,6 +33,7 @@ namespace Ambermoon.Data
             GraphicFormat.Texture4Bit => 4,
             GraphicFormat.XRGB16 => 16,
             GraphicFormat.RGBA32 => 32,
+            GraphicFormat.AttachedSprite => 4,
             _ => throw new ArgumentOutOfRangeException("Invalid graphic format")
         };
 
@@ -59,6 +61,19 @@ namespace Ambermoon.Data
             IndexedGraphic = true;
 
             Array.Fill(Data, colorIndex);
+        }
+
+        public Graphic Clone()
+        {
+            var dataCopy = new byte[Data.Length];
+            Buffer.BlockCopy(Data, 0, dataCopy, 0, dataCopy.Length);
+            return new Graphic
+            {
+                Width = Width,
+                Height = Height,
+                Data = dataCopy,
+                IndexedGraphic = IndexedGraphic
+            };
         }
 
         public Graphic CreateScaled(float factor)
@@ -120,6 +135,31 @@ namespace Ambermoon.Data
                 if (Data[i] == oldColorIndex)
                     Data[i] = newColorIndex;
             }
+        }
+
+        public Graphic GetArea(int x, int y, int width, int height)
+        {
+            if (!IndexedGraphic)
+                throw new AmbermoonException(ExceptionScope.Application, "GetArea cannot be used on non-indexed graphics.");
+
+            if (x < 0 || y < 0 || x + width > Width || y + height > Height)
+                throw new AmbermoonException(ExceptionScope.Application, "Invalid area provided for Graphic.GetArea.");
+
+            var graphic = new Graphic(width, height, 0);
+
+            for (int ty = 0; ty < height; ++ty)
+            {
+                int sx = x;
+
+                for (int tx = 0; tx < width; ++tx, ++sx)
+                {
+                    graphic.Data[tx + ty * width] = Data[sx + y * Width];
+                }
+
+                ++y;
+            }
+
+            return graphic;
         }
 
         public void AddOverlay(uint x, uint y, Graphic overlay, bool blend = true)
@@ -199,7 +239,7 @@ namespace Ambermoon.Data
             if (IndexedGraphic)
             {
                 if (palette == null)
-                    throw new ArgumentNullException("Palette for indexed graphic was null.");
+                    throw new ArgumentNullException(nameof(palette));
 
                 byte[] data = new byte[Width * Height * 4];
 
@@ -211,11 +251,6 @@ namespace Ambermoon.Data
                     {
                         for (int c = 0; c < 4; ++c)
                             data[i * 4 + c] = palette.Data[index * 4 + c];
-                    }
-                    else
-                    {
-                        data[i * 4 + 1] = 80;
-                        data[i * 4 + 3] = 1;
                     }
                 }
 

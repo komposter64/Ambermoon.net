@@ -105,7 +105,14 @@ namespace Ambermoon.Data
         /// Executes conversation actions like giving the item/gold/food or join/leave the party (conversation only)
         /// </summary>
         Interact,
-        Unknown
+        /// <summary>
+        /// Removes a party member and optionally stores its belongings in one or two chests.
+        /// </summary>
+        RemovePartyMember,
+        /// <summary>
+        /// Adds a non-interactive game delay (Ambermoon Advanced only).
+        /// </summary>
+        Delay
     }
 
     public class Event
@@ -785,7 +792,9 @@ namespace Ambermoon.Data
             TravelType = 0x18,
             LeadClass = 0x19,
             SpellEmpowered = 0x1a,
-            IsNight = 0x1b
+            IsNight = 0x1b,
+            Attribute = 0x1c,
+            Skill = 0x1d
         }
 
         public ConditionType TypeOfCondition { get; set; }
@@ -848,7 +857,7 @@ namespace Ambermoon.Data
                 ConditionType.DoorOpen => $"{Type}: Door {ObjectIndex} {(Value == 0 ? "closed" : "open")}, {falseHandling}",
                 ConditionType.ChestOpen => $"{Type}: Chest {ObjectIndex} {(Value == 0 ? "closed" : "open")}, {falseHandling}",
                 ConditionType.CharacterBit => $"{Type}: Character bit {ObjectIndex / 32 + 1}:{1 + ObjectIndex % 32} = {Value}, {falseHandling}",
-                ConditionType.PartyMember => $"{Type}: Has party member {ObjectIndex} without ailments {Enum.GetFlagNames(DisallowedAilments)}, {falseHandling}",
+                ConditionType.PartyMember => $"{Type}: Has party member {ObjectIndex} without ailments {Enum.GetFlagNames(DisallowedAilments, 2)}, {falseHandling}",
                 ConditionType.ItemOwned => $"{Type}: {(Value == 0 ? $"Not own item" : $"Own item {Math.Max(1, Count)}x")} {ObjectIndex}, {falseHandling}",
                 ConditionType.UseItem => $"{Type}: Use item {ObjectIndex}, {falseHandling}",
                 ConditionType.KnowsKeyword => $"{Type}: {(Value == 0 ? "Not know" : "Know")} keyword {ObjectIndex}, {falseHandling}",
@@ -870,6 +879,8 @@ namespace Ambermoon.Data
                 ConditionType.LeadClass => $"{Type}: Active party member has class {Enum.GetName((Class)ObjectIndex)}, {falseHandling}",
                 ConditionType.SpellEmpowered => $"{Type}: Active party member has {((CharacterElement)(1 << (4 + (int)Util.Limit(0, ObjectIndex, 2)))).ToString().ToLower()} spells empowered, {falseHandling}",
                 ConditionType.IsNight => $"{Type}: Is night, {falseHandling}",
+                ConditionType.Attribute => $"{Type}: {(Attribute)ObjectIndex} {(Value == 0 ? "<" : ">=")} {Count}, {falseHandling}",
+                ConditionType.Skill => $"{Type}: {(Skill)ObjectIndex} {(Value == 0 ? "<" : ">=")} {Count}, {falseHandling}",
                 _ => $"{Type}: Unknown ({TypeOfCondition}), Index {ObjectIndex}, Value {Value}, {falseHandling}",
             };
         }
@@ -1246,6 +1257,56 @@ namespace Ambermoon.Data
         public override string ToString()
         {
             return $"{Type}";
+        }
+    }
+
+    public class RemovePartyMemberEvent : Event
+    {
+        public byte CharacterIndex { get; set; }
+        public byte ChestIndexEquipment { get; set; }
+        public byte ChestIndexInventory { get; set; }
+        public byte[] Unused { get; set; }
+
+        public override Event Clone(bool keepNext)
+        {
+            var clone = new RemovePartyMemberEvent
+            {
+                CharacterIndex = CharacterIndex,
+                ChestIndexEquipment = ChestIndexEquipment,
+                ChestIndexInventory = ChestIndexInventory,
+                Unused = CloneBytes(Unused),
+            };
+            CloneProperties(clone, keepNext);
+            return clone;
+        }
+
+        public override string ToString()
+        {
+            return $"{Type} {CharacterIndex} (Equip -> Chest {ChestIndexEquipment}, Items -> Chest {ChestIndexInventory})";
+        }
+    }
+
+    public class DelayEvent : Event
+    {
+        public uint Milliseconds { get; set; }
+        public byte[] Unused1 { get; set; }
+        public ushort Unused2 { get; set; }
+
+        public override Event Clone(bool keepNext)
+        {
+            var clone = new DelayEvent
+            {
+                Milliseconds = Milliseconds,
+                Unused1 = CloneBytes(Unused1),
+                Unused2 = Unused2,
+            };
+            CloneProperties(clone, keepNext);
+            return clone;
+        }
+
+        public override string ToString()
+        {
+            return $"{Type} {Milliseconds} ms";
         }
     }
 

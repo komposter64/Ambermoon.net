@@ -39,7 +39,7 @@ namespace Ambermoon.Data.Legacy.Characters
             character.CharacterBitIndex = dataReader.ReadWord();
             character.Conditions = (Condition)dataReader.ReadWord();
             ProcessIfMonster(dataReader, character, (Monster monster, ushort value) => monster.DefeatExperience = value);
-            character.UnknownWord34 = dataReader.ReadWord(); // Unknown
+            character.UnusedWord34 = dataReader.ReadWord(); // Unknown
             // mark of return location is stored here: word x, word y, word mapIndex
             ProcessIfPartyMember(dataReader, character, (PartyMember member, ushort value) => member.MarkOfReturnX = value);
             ProcessIfPartyMember(dataReader, character, (PartyMember member, ushort value) => member.MarkOfReturnY = value);
@@ -64,10 +64,10 @@ namespace Ambermoon.Data.Legacy.Characters
             character.SpellPoints.CurrentValue = dataReader.ReadWord();
             character.SpellPoints.MaxValue = dataReader.ReadWord();
             character.SpellPoints.BonusValue = (short)dataReader.ReadWord();
-            character.VariableDefense = (short)dataReader.ReadWord();
+            character.BonusDefense = (short)dataReader.ReadWord();
             character.BaseDefense = (short)dataReader.ReadWord();
-            character.VariableAttack = (short)dataReader.ReadWord();
-            character.BaseAttack = (short)dataReader.ReadWord();
+            character.BonusAttackDamage = (short)dataReader.ReadWord();
+            character.BaseAttackDamage = (short)dataReader.ReadWord();
             character.MagicAttack = (short)dataReader.ReadWord();
             character.MagicDefense = (short)dataReader.ReadWord();
             character.AttacksPerRoundIncreaseLevels = dataReader.ReadWord();
@@ -75,7 +75,7 @@ namespace Ambermoon.Data.Legacy.Characters
             character.SpellPointsPerLevel = dataReader.ReadWord();
             character.SpellLearningPointsPerLevel = dataReader.ReadWord();
             character.TrainingPointsPerLevel = dataReader.ReadWord();
-            character.UnknownWord236 = dataReader.ReadWord(); // Unknown
+            character.LookAtCharTextIndex = dataReader.ReadWord(); // Unknown
             character.ExperiencePoints = dataReader.ReadDword();
             character.LearnedHealingSpells = dataReader.ReadDword();
             character.LearnedAlchemisticSpells = dataReader.ReadDword();

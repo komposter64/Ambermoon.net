@@ -6,7 +6,7 @@ namespace Ambermoon.Data.Enumerations
     /// The index here matches the travel gfx file index (0-based).
     /// Each travel gfx has 4 frames for directions Up, Right, Down and Left in that order.
     /// </summary>
-    public enum TravelType
+    public enum TravelType : byte
     {
         Walk,
         Horse,
@@ -18,7 +18,8 @@ namespace Ambermoon.Data.Enumerations
         Swim,
         WitchBroom,
         SandLizard,
-        SandShip
+        SandShip,
+        Wasp // Ambermoon Advanced only
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]
@@ -85,6 +86,19 @@ namespace Ambermoon.Data.Enumerations
             TravelType.Eagle => true,
             TravelType.WitchBroom => true,
             TravelType.Fly => true,
+            TravelType.Wasp => true,
+            _ => false
+        };
+
+        public static bool IgnoreAutoPoison(this TravelType travelType) => travelType switch
+        {
+            TravelType.Raft => true,
+            TravelType.Ship => true,
+            TravelType.Eagle => true,
+            TravelType.WitchBroom => true,
+            TravelType.Fly => true,
+            TravelType.SandShip => true,
+            TravelType.Wasp => true,
             _ => false
         };
 
@@ -101,6 +115,7 @@ namespace Ambermoon.Data.Enumerations
             TravelType.WitchBroom => Song.BurnBabyBurn,
             TravelType.SandLizard => Song.MellowCamelFunk,
             TravelType.SandShip => Song.PsychedelicDuneGroove,
+            TravelType.Wasp => Song.WholeLottaDove,
             _ => Song.Default
         };
 

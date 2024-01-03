@@ -62,7 +62,7 @@
         DuplicateItem,
         LPStealer,
         SPStealer,
-        UnusedAlchemistic30,
+        GhostInferno, // Advanced only
         MonsterKnowledge,
         Identification,
         Knowledge,
@@ -148,10 +148,11 @@
         Drugs = 201, // stinking mushroom
         SelfHealing = 202, // Advanced only
         SelfReviving = 203, // Advanced only
-        ExpExchange = 204 // Advanced only
+        ExpExchange = 204, // Advanced only
+        MountWasp = 205 // Advanced only
     }
 
-    public enum HealingSpell
+    public enum HealingSpell : byte
     {
         None,
         HealingHand,
@@ -186,7 +187,7 @@
         RestoreStamina
     }
 
-    public enum AlchemisticSpell
+    public enum AlchemisticSpell : byte
     {
         None,
         ChargeItem,
@@ -218,10 +219,10 @@
         DuplicateItem,
         LPStealer,
         SPStealer,
-        Unused30
+        GhostInferno // Advanced only
     }
 
-    public enum MysticSpell
+    public enum MysticSpell : byte
     {
         None,
         MonsterKnowledge,
@@ -256,7 +257,7 @@
         Unused30
     }
 
-    public enum DestructionSpell
+    public enum DestructionSpell : byte
     {
         None,
         MagicalProjectile,
@@ -298,6 +299,7 @@
             // Most damage dealing spells except for
             // dissolving spells fail against petrified enemies.
             return  spell == Spell.GhostWeapon ||
+                    spell == Spell.GhostInferno ||
                     spell == Spell.LPStealer ||
                     spell == Spell.SPStealer ||
                     spell == Spell.MagicalProjectile ||
@@ -309,6 +311,7 @@
         {
             // No dissolve spells.
             return spell == Spell.GhostWeapon ||
+                    spell == Spell.GhostInferno ||
                    spell == Spell.LPStealer ||
                    spell == Spell.SPStealer ||
                    spell == Spell.MagicalProjectile ||

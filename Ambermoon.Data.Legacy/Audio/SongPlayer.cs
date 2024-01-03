@@ -7,7 +7,7 @@ namespace Ambermoon.Data.Legacy.Audio
     {
         IAudioStream currentStream = null;
         IAudioOutput audioOutput = null;
-        readonly object startMutex = new object();
+        readonly object startMutex = new();
 
         public void Start(IAudioOutput audioOutput, IAudioStream audioStream)
         {

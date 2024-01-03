@@ -35,6 +35,7 @@ namespace Ambermoon.Renderer.OpenGL
 
     public class RenderView : RenderLayerFactory, IRenderView, IDisposable
     {
+        Action<byte[]> screenshotDataHandler = null;
         bool disposed = false;
         readonly Context context;
         bool useFrameBuffer = false;
@@ -70,6 +71,8 @@ namespace Ambermoon.Renderer.OpenGL
         readonly FowFactory fowFactory = null;
         readonly Camera3D camera3D = null;
         PaletteReplacement paletteReplacement = null;
+        PaletteReplacement horizonPaletteReplacement = null;
+        PaletteFading paletteFading = null;
         bool fullscreen = false;
         const float VirtualAspectRatio = Global.VirtualAspectRatio;
         float sizeFactorX = 1.0f;
@@ -106,28 +109,23 @@ namespace Ambermoon.Renderer.OpenGL
         public ICamera3D Camera3D => camera3D;
         public IGameData GameData { get; }
         public IGraphicProvider GraphicProvider { get; }
+        public IFontProvider FontProvider { get; }
         public ITextProcessor TextProcessor { get; }
         public Action<float> AspectProcessor { get; }
 
         #region Coordinate transformations
 
-        PositionTransformation PositionTransformation => (Position position) =>
-            new Position(Misc.Round(position.X * RenderFactorX), Misc.Round(position.Y * RenderFactorY));
+        PositionTransformation PositionTransformation => (FloatPosition position) =>
+            new FloatPosition(position.X * RenderFactorX, position.Y * RenderFactorY);
 
-        SizeTransformation SizeTransformation => (Size size) =>
-        {
-            // don't scale a dimension of 0
-            int width = (size.Width == 0) ? 0 : Misc.Ceiling(size.Width * RenderFactorX);
-            int height = (size.Height == 0) ? 0 : Misc.Ceiling(size.Height * RenderFactorY);
-
-            return new Size(width, height);
-        };
+        SizeTransformation SizeTransformation => (FloatSize size) =>
+            new FloatSize(size.Width * RenderFactorX, size.Height * RenderFactorY);
 
         #endregion
 
 
         public RenderView(IContextProvider contextProvider, IGameData gameData, IGraphicProvider graphicProvider,
-            ITextProcessor textProcessor, Func<TextureAtlasManager> textureAtlasManagerProvider,
+            IFontProvider fontProvider, ITextProcessor textProcessor, Func<TextureAtlasManager> textureAtlasManagerProvider,
             int framebufferWidth, int framebufferHeight, Size windowSize, ref bool useFrameBuffer, ref bool useEffectFrameBuffer,
             Func<KeyValuePair<int, int>> screenBufferModeProvider, Func<int> effectProvider, Graphic[] additionalPalettes,
             DeviceType deviceType = DeviceType.Desktop, SizingPolicy sizingPolicy = SizingPolicy.FitRatio,
@@ -137,6 +135,7 @@ namespace Ambermoon.Renderer.OpenGL
             AspectProcessor = UpdateAspect;
             GameData = gameData;
             GraphicProvider = graphicProvider;
+            FontProvider = fontProvider;
             TextProcessor = textProcessor;
             frameBufferSize = new Size(framebufferWidth, framebufferHeight);
             renderDisplayArea = new Rect(new Position(0, 0), windowSize);
@@ -168,6 +167,23 @@ namespace Ambermoon.Renderer.OpenGL
             var textureAtlasManager = textureAtlasManagerProvider?.Invoke();
             var palette = textureAtlasManager.CreatePalette(graphicProvider, additionalPalettes);
 
+            static void Set320x256View(IRenderLayer renderLayer)
+            {
+                // To keep the aspect ration of 16:10 we use a virtual screen of 409,6 x 256.
+                // All positions are in this screen even though position values will only be
+                // in the range 320 x 256. There will be a black border left and right.
+                // The factor 200/256 is used to transform all positions. All X coordinates
+                // are increased by (409,6 - 320) / 2 (44.8) to center the display. But this
+                // values has to be factored by 200/256 as well and will become exactly 35.
+                const float factorY = 200.0f / 256.0f;
+                const float factorX = factorY;// factorY * (1.0f + 0.4f / 410.0f);
+
+                renderLayer.PositionTransformation = (FloatPosition position) =>
+                    new FloatPosition(35.0f + position.X * factorX, position.Y * factorY);
+                renderLayer.SizeTransformation = (FloatSize size) =>
+                    new FloatSize(size.Width * factorX, size.Height * factorY);
+            }
+
             foreach (var layer in Enum.GetValues<Layer>())
             {
                 if (layer == Layer.None)
@@ -178,8 +194,11 @@ namespace Ambermoon.Renderer.OpenGL
                     var texture = textureAtlasManager.GetOrCreate(layer)?.Texture;
                     var renderLayer = Create(layer, texture, palette);
 
-                    if (layer != Layer.Map3DBackground && layer != Layer.Map3DCeiling && layer != Layer.Map3D && layer != Layer.Billboards3D)
+                    if (layer != Layer.Map3DBackground && layer != Layer.Map3DBackgroundFog && layer != Layer.Map3DCeiling && layer != Layer.Map3D && layer != Layer.Billboards3D)
                         renderLayer.Visible = true;
+
+                    if (RenderLayer.DefaultLayerConfigs[layer].Use320x256)
+                        Set320x256View(renderLayer);
 
                     AddLayer(renderLayer);
                 }
@@ -254,6 +273,16 @@ namespace Ambermoon.Renderer.OpenGL
         void UpdateAspect(float aspect)
         {
             context?.UpdateAspect(aspect);
+        }
+
+        public void UsePalette(Layer layer, bool use)
+        {
+            layers[layer]?.UsePalette(use);
+        }
+
+        public void SetTextureFactor(Layer layer, uint factor)
+        {
+            layers[layer]?.SetTextureFactor(factor);
         }
 
         public void Close()
@@ -435,17 +464,15 @@ namespace Ambermoon.Renderer.OpenGL
             State.Gl.Viewport(viewport.X, viewport.Y, (uint)viewport.Width, (uint)viewport.Height);
         }
 
-        public byte[] TakeScreenshot()
+        public void TakeScreenshot(Action<byte[]> dataHandler)
         {
-            var area = frameBufferWindowArea;
-            byte[] buffer = new byte[area.Width * area.Height * 3];
-            State.Gl.ReadPixels<byte>(area.X, area.Y, (uint)area.Width, (uint)area.Height, GLEnum.Rgb, GLEnum.UnsignedByte, buffer);
-            return buffer;
+            if (screenshotDataHandler == null)
+                screenshotDataHandler = dataHandler;
         }
 
         public void AddLayer(IRenderLayer layer)
         {
-            if (!(layer is RenderLayer))
+            if (layer is not RenderLayer)
                 throw new InvalidCastException("The given layer is not valid for this renderer.");
 
             layers.Add(layer.Layer, layer as RenderLayer);
@@ -475,6 +502,24 @@ namespace Ambermoon.Renderer.OpenGL
         {
             if (disposed)
                 return;
+            
+            if (screenshotDataHandler != null)
+            {
+                try
+                {
+                    var area = frameBufferWindowArea;
+                    byte[] buffer = new byte[area.Width * area.Height * 3];
+                    State.Gl.ReadBuffer(GLEnum.Back);
+                    State.Gl.PixelStore(PixelStoreParameter.PackAlignment, 1);
+                    State.Gl.ReadPixels<byte>(area.X, area.Y, (uint)area.Width, (uint)area.Height, GLEnum.Rgb, GLEnum.UnsignedByte, buffer);
+                    screenshotDataHandler(buffer);
+                    screenshotDataHandler = null;
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
 
             try
             {
@@ -524,8 +569,8 @@ namespace Ambermoon.Renderer.OpenGL
                             camera3D.Activate();
                             State.RestoreProjectionMatrix(State.ProjectionMatrix3D);
                             var mapViewArea = new Rect(Global.Map3DViewX, Global.Map3DViewY, Global.Map3DViewWidth + 1, Global.Map3DViewHeight + 1);
-                            mapViewArea.Position = PositionTransformation(mapViewArea.Position);
-                            mapViewArea.Size = SizeTransformation(mapViewArea.Size);
+                            mapViewArea.Position = PositionTransformation(mapViewArea.Position).Round();
+                            mapViewArea.Size = SizeTransformation(mapViewArea.Size).ToSize();
                             var viewport = frameBufferWindowArea;
                             if (useEffectFrameBuffer)
                             {
@@ -602,7 +647,7 @@ namespace Ambermoon.Renderer.OpenGL
                         set2DViewport = true;
                     }
 
-                    if (useEffectFrameBuffer && layer.Key == Layer.Misc)
+                    if (useEffectFrameBuffer && layer.Key == Global.LastLayer)
                     {
                         State.Gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0u);
                         var viewport = frameBufferWindowArea;
@@ -621,18 +666,17 @@ namespace Ambermoon.Renderer.OpenGL
                                 (0x800000 >> (8 * (DrugColorComponent.Value % 3))))));
                         State.Gl.BlendFunc(BlendingFactor.DstColor, BlendingFactor.OneMinusConstantColor);
                     }
-                    else if (layer.Key == Layer.FOW || layer.Key == Layer.Misc || layer.Key == Layer.Images || layer.Key == Layer.OutroText)
+                    else if (layer.Value.Config.EnableBlending)
                     {
                         State.Gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
                     }
-                    if (layer.Key == Layer.FOW || layer.Key == Layer.IntroEffects || layer.Key == Layer.Effects ||
-                        layer.Key == Layer.DrugEffect || layer.Key == Layer.Misc || layer.Key == Layer.Images ||
-                        layer.Key == Layer.OutroText)
+
+                    if (layer.Value.Config.EnableBlending)
                         State.Gl.Enable(EnableCap.Blend);
                     else
                         State.Gl.Disable(EnableCap.Blend);
 
-                    if (layer.Key == Layer.Images)
+                    if (!layer.Value.Config.RenderToVirtualScreen)
                     {
                         State.PushProjectionMatrix(State.FullScreenProjectionMatrix2D);
                         try
@@ -792,6 +836,23 @@ namespace Ambermoon.Renderer.OpenGL
             return rect;
         }
 
+        public Position ScreenToLayer(Position position, Layer layer)
+        {
+            if (RenderLayer.DefaultLayerConfigs[layer].Use320x256)
+            {
+                position = ScreenToView(position);
+
+                float WindowFactorX = renderDisplayArea.Width / 409.6f;
+                float WindowFactorY = renderDisplayArea.Height / 256.0f;
+
+                return new Position(Misc.Round(position.X / WindowFactorX - 44.8f), Misc.Round(position.Y / WindowFactorY));
+            }
+            else
+            {
+                return ScreenToGame(position);
+            }
+        }
+
         // This is used to convert mouse coordinates to game coordinates
         public Position ScreenToGame(Position position)
         {
@@ -880,7 +941,34 @@ namespace Ambermoon.Renderer.OpenGL
 
                     (GetLayer(Layer.Billboards3D) as RenderLayer).RenderBuffer.Billboard3DShader.SetPaletteReplacement(paletteReplacement);
                     (GetLayer(Layer.Map3D) as RenderLayer).RenderBuffer.Texture3DShader.SetPaletteReplacement(paletteReplacement);
-                    (GetLayer(Layer.Map3DBackground) as RenderLayer).RenderBuffer.SkyShader.SetPaletteReplacement(paletteReplacement);
+                }
+            }
+        }
+
+        public PaletteReplacement HorizonPaletteReplacement
+        {
+            get => horizonPaletteReplacement;
+            set
+            {
+                if (horizonPaletteReplacement != value)
+                {
+                    horizonPaletteReplacement = value;
+
+                    (GetLayer(Layer.Map3DBackground) as RenderLayer).RenderBuffer.SkyShader.SetPaletteReplacement(horizonPaletteReplacement);
+                }
+}
+        }
+
+        public PaletteFading PaletteFading
+        {
+            get => paletteFading;
+            set
+            {
+                if (paletteFading != value)
+                {
+                    paletteFading = value;
+
+                    (GetLayer(Layer.MainMenuGraphics) as RenderLayer).RenderBuffer.FadingTextureShader.SetPaletteFading(paletteFading);
                 }
             }
         }
@@ -898,6 +986,12 @@ namespace Ambermoon.Renderer.OpenGL
         {
             (GetLayer(Layer.Billboards3D) as RenderLayer).RenderBuffer.Billboard3DShader.SetSkyColorReplacement(skyColor, replaceColor);
             (GetLayer(Layer.Map3D) as RenderLayer).RenderBuffer.Texture3DShader.SetSkyColorReplacement(skyColor, replaceColor);
+        }
+
+        public void SetFog(Color fogColor, float distance)
+        {
+            (GetLayer(Layer.Billboards3D) as RenderLayer).RenderBuffer.Billboard3DShader.SetFog(fogColor, distance);
+            (GetLayer(Layer.Map3D) as RenderLayer).RenderBuffer.Texture3DShader.SetFog(fogColor, distance);
         }
     }
 }

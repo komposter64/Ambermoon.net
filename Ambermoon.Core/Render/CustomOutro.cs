@@ -1,7 +1,7 @@
 ﻿/*
  * CustomOutro.cs - Remake outro sequence
  *
- * Copyright (C) 2021-2022  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2021-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -147,7 +147,7 @@ namespace Ambermoon.Render
 
                 var travelInfoEagle = renderView.GameData.GetTravelGraphicInfo(TravelType.Eagle, CharacterDirection.Left);
                 eagle = layout.AddMapCharacterSprite(new Rect(new Position(198, 58), new Size((int)travelInfoEagle.Width, (int)travelInfoEagle.Height)),
-                    3 * 17 + (uint)TravelType.Eagle * 4 + 3, ushort.MaxValue);
+                    Graphics.TravelGraphicOffset + (uint)TravelType.Eagle * 4 + 3, ushort.MaxValue);
                 eagle.ClipArea = Game.Map2DViewArea;
 
                 void MoveEagleDownLeft()
@@ -248,13 +248,45 @@ namespace Ambermoon.Render
                     " ^Stranger: Not so fast ~HERO~!",
                     " ^~HERO~: Who are you?",
                     "Stranger: My name is ~INK17~Pyrdacor~INK31~. I don't have much time.",
-                    "Stranger: But I can tell you this: The adventure is not yet over.",
+                    "Stranger: But I can tell you this: The adventure is not over yet.",
                     " ^~HERO~: What are you talking about?",
                     " ^~INK17~The third part of the Amber trilogy~INK31~ is planned.",
                     " ^~HERO~: Awesome!",
                     "Pyrdacor: Thank you for playing ~INK22~Ambermoon~INK31~! I hope you had fun."
                 }
             },
+            { GameLanguage.French, new List<string>
+                {
+                    "Egil: Ce fut une aventure extraordinaire, mais je dois maintenant dire au revoir..",
+                    "Egil: Les nains de Gemstone ont besoin de volontaires pour reconstruire leur capitale.",
+                    "~HERO~: J'espère que nous nous reverrons. Bon voyage mon ami !",
+                    " ^~HERO~: ...",
+                    " ^Inconnu: Pas si vite ~HERO~!",
+                    " ^~HERO~: Qui êtes-vous ?",
+                    "Inconnu: Je m'appelle ~INK17~Pyrdacor~INK31~. Je n'ai pas beaucoup de temps.",
+                    "Inconnu: Mais je peux vous dire ceci : L'aventure n'est pas encore terminée.",
+                    " ^~HERO~: De quoi parlez-vous ?",
+                    " ^~INK17~Le troisième volet de la trilogie Amber~INK31~ est prévu.",
+                    " ^~HERO~: Épatant !",
+                    "Pyrdacor: Merci d'avoir joué à ~INK22~Ambermoon~INK31~ ! J'espère que vous vous êtes bien amusés."
+                }
+            },
+            { GameLanguage.Polish, new List<string>
+                {
+                    "Egil: To była niesamowita przygoda, ale teraz muszę się pożegnać.",
+                    "Egil: Krasnoludy z Gemstone potrzebują ochotników do odbudowy swojej stolicy.",
+                    "~HERO~: Mam nadzieję, że jeszcze się spotkamy. Udanej podróży przyjacielu!",
+                    " ^~HERO~: ...",
+                    " ^Nieznajomy: Nie tak szybko ~HERO~!",
+                    " ^~HERO~: Kim jesteś?",
+                    "Nieznajomy: Moje imię to ~INK17~Pyrdacor~INK31~. Nie mam zbyt wiele czasu.",
+                    "Nieznajomy: Ale mogę powiedzieć jedno: Przygoda jeszcze się nie skończyła.",
+                    " ^~HERO~: O czym ty mówisz?",
+                    " ^Planowana jest ~INK17~Trzecia część trylogii Amber~INK31~.",
+                    " ^~HERO~: Wspaniale!",
+                    "Pyrdacor: Dziękuję za grę w ~INK22~Ambermoon~INK31~! Mam nadzieję, że dobrze się bawiliście."
+                }
+            }
         };
 
         readonly Queue<KeyValuePair<TimeSpan, IAction>> actions = new Queue<KeyValuePair<TimeSpan, IAction>>();
@@ -308,7 +340,7 @@ namespace Ambermoon.Render
             game.Pause();
             game.StartSequence();
             game.CursorType = CursorType.None;
-            credits = new Credits(renderView, preAction =>
+            credits = new Credits(renderView, layout, preAction =>
             {
                 credits = null;
                 game.SetClickHandler(() =>
@@ -384,7 +416,7 @@ namespace Ambermoon.Render
             if (withPortraitBackground)
             {
                 images.Add(layout.AddSprite(rect, Graphics.UICustomGraphicOffset + (uint)UICustomGraphic.PortraitBackground,
-                    52, displayLayer));
+                    (byte)(renderView.GraphicProvider.PrimaryUIPaletteIndex + 3 - 1), displayLayer));
             }
 
             images.Add(layout.AddSprite(rect, index, paletteIndex ?? game.PrimaryUIPaletteIndex,
@@ -401,35 +433,12 @@ namespace Ambermoon.Render
             return popup;
         }
 
-        UIText AddText(string text, Rect rect, TextColor color, TextAlign textAlign = TextAlign.Left, byte displayLayer = 0)
-        {
-            var uiText = layout.AddText(rect, game.ProcessText(text, rect), color, textAlign, displayLayer);
-            uiText.PaletteIndex = game.PrimaryUIPaletteIndex;
-            texts.Add(uiText);
-            return uiText;
-        }
-
         UIText AddText(IText text, Rect rect, TextColor color, TextAlign textAlign = TextAlign.Left, byte displayLayer = 0)
         {
             var uiText = layout.AddText(rect, text, color, textAlign, displayLayer);
             uiText.PaletteIndex = game.PrimaryUIPaletteIndex;
             texts.Add(uiText);
             return uiText;
-        }
-
-        void AddArea(Rect rect, Color color, byte displayLayer = 0)
-        {
-            var area = renderView.ColoredRectFactory.Create(rect.Width, rect.Height, color, displayLayer);
-            area.Layer = renderView.GetLayer(Layer.UI);
-            area.X = rect.X;
-            area.Y = rect.Y;
-            area.Visible = true;
-            areas.Add(area);
-        }
-
-        void AddPanel(Rect rect, byte displayLayer = 0)
-        {
-            panels.Add(layout.AddPanel(rect, displayLayer));
         }
 
         interface IAction
@@ -504,7 +513,7 @@ namespace Ambermoon.Render
                 int processedLineCharacters = 1;
                 int processedTextLength = 1;
                 var textRect = rect.CreateShrinked(2);
-                var clip = new Rect(textRect.Position, new Size(Global.GlyphWidth, Global.GlyphLineHeight));
+                var clip = outro.layout.GetTextRect(textRect.Position, new Size(Global.GlyphWidth, Global.GlyphLineHeight));
                 var wrappedText = outro.game.ProcessText(text, textRect);
                 UIText[] texts = new UIText[wrappedText.LineCount];
                 var position = new Position(textRect.Position);

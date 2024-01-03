@@ -1,7 +1,7 @@
 ﻿/*
  * Texture3DShader.cs - Shader for textured 3D objects
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -23,6 +23,8 @@ using Ambermoon.Data;
 
 namespace Ambermoon.Renderer
 {
+    // NOTE: This won't support non-palette graphics as it uses the color indices
+    // for color replacements.
     internal class Texture3DShader : ColorShader
     {
         internal static readonly string DefaultTexCoordName = TextureShader.DefaultTexCoordName;
@@ -38,6 +40,9 @@ namespace Ambermoon.Renderer
         internal static readonly string DefaultUseColorReplaceName = "useReplace";
         internal static readonly string DefaultSkyColorIndexName = "skyColorIndex";
         internal static readonly string DefaultSkyReplaceColorName = "skyColorReplace";
+        internal static readonly string DefaultPaletteCountName = TextureShader.DefaultPaletteCountName;
+        internal static readonly string DefaultFogColorName = "fogColor";
+        internal static readonly string DefaultFogDistanceName = "fogDist";
 
         // The palette has a size of 32xNumPalettes pixels.
         // Each row represents one palette of 32 colors.
@@ -49,11 +54,15 @@ namespace Ambermoon.Renderer
             $"uniform sampler2D {DefaultSamplerName};",
             $"uniform sampler2D {DefaultPaletteName};",
             $"uniform float {DefaultLightName};",
+            $"uniform float {DefaultPaletteCountName};",
             $"uniform vec4 {DefaultColorReplaceName}[16];",
             $"uniform float {DefaultUseColorReplaceName};",
             $"uniform float {DefaultSkyColorIndexName};",
             $"uniform vec4 {DefaultSkyReplaceColorName};",
+            $"uniform vec4 {DefaultFogColorName} = vec4(0);",
+            $"uniform float {DefaultFogDistanceName};",
             $"in vec2 varTexCoord;",
+            $"in float distance;",
             $"flat in float palIndex;",
             $"flat in vec2 textureEndCoord;",
             $"flat in vec2 textureSize;",
@@ -61,6 +70,7 @@ namespace Ambermoon.Renderer
             $"",
             $"void main()",
             $"{{",
+            $"    {DefaultFragmentOutColorName} = vec4(0);",
             $"    vec2 realTexCoord = varTexCoord;",
             $"    if (realTexCoord.x >= textureEndCoord.x)",
             $"        realTexCoord.x -= floor((textureSize.x + realTexCoord.x - textureEndCoord.x) / textureSize.x) * textureSize.x;",
@@ -68,7 +78,7 @@ namespace Ambermoon.Renderer
             $"        realTexCoord.y -= floor((textureSize.y + realTexCoord.y - textureEndCoord.y) / textureSize.y) * textureSize.y;",
             $"    float colorIndex = texture({DefaultSamplerName}, realTexCoord).r * 255.0f;",
             $"    vec4 pixelColor = {DefaultUseColorReplaceName} > 0.5f && colorIndex < 15.5f ? {DefaultColorReplaceName}[int(colorIndex + 0.5f)]",
-            $"        : texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {Shader.PaletteCount}));",
+            $"        : texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {DefaultPaletteCountName}));",
             $"    ",
             $"    if (alphaEnabled > 0.5f && alphaEnabled < 1.5f && (colorIndex < 0.5f || pixelColor.a < 0.5f) || {DefaultLightName} < 0.01f)",
             $"        discard;",
@@ -81,6 +91,12 @@ namespace Ambermoon.Renderer
             $"    }}",
             $"    else",
             $"        {DefaultFragmentOutColorName} = vec4(max(vec3(0), pixelColor.rgb + vec3({DefaultLightName}) - vec3(1)), pixelColor.a);",
+            $"    ",
+            $"    if ({DefaultFogColorName}.a > 0.001f)",
+            $"    {{",
+            $"        float fogFactor = {DefaultFogColorName}.a * min({DefaultSkyColorIndexName} < 31.5f ? 0.8f : 1.0f, distance / {DefaultFogDistanceName});",
+            $"        {DefaultFragmentOutColorName} = {DefaultFragmentOutColorName} * (1.0f - fogFactor) + fogFactor * {DefaultFogColorName};",
+            $"    }}",
             $"}}"
         };
 
@@ -97,6 +113,7 @@ namespace Ambermoon.Renderer
             $"uniform mat4 {DefaultProjectionMatrixName};",
             $"uniform mat4 {DefaultModelViewMatrixName};",
             $"out vec2 varTexCoord;",
+            $"out float distance;",
             $"flat out float palIndex;",
             $"flat out vec2 textureEndCoord;",
             $"flat out vec2 textureSize;",
@@ -111,6 +128,7 @@ namespace Ambermoon.Renderer
             $"    textureSize = atlasFactor * vec2({DefaultTexSizeName}.x, {DefaultTexSizeName}.y);",
             $"    alphaEnabled = float({DefaultAlphaName});",
             $"    gl_Position = {DefaultProjectionMatrixName} * {DefaultModelViewMatrixName} * vec4({DefaultPositionName}, 1.0f);",
+            $"    distance = gl_Position.z;",
             $"}}"
         };
 
@@ -124,6 +142,11 @@ namespace Ambermoon.Renderer
             : base(state, fragmentShaderLines, vertexShaderLines)
         {
 
+        }
+
+        public void UsePalette(bool use)
+        {
+            shaderProgram.SetInput(DefaultPaletteName, use ? 1.0f : 0.0f);
         }
 
         public void SetSampler(int textureUnit = 0)
@@ -167,6 +190,18 @@ namespace Ambermoon.Renderer
                 shaderProgram.SetInputVector4(DefaultSkyReplaceColorName, replaceColor.R / 255.0f,
                     replaceColor.G / 255.0f, replaceColor.B / 255.0f, replaceColor.A / 255.0f);
             }
+        }
+
+        public void SetPaletteCount(int count)
+        {
+            shaderProgram.SetInput(DefaultPaletteCountName, (float)count);
+        }
+
+        public void SetFog(Render.Color fogColor, float distance)
+        {
+            shaderProgram.SetInputVector4(DefaultFogColorName, fogColor.R / 255.0f,
+                fogColor.G / 255.0f, fogColor.B / 255.0f, fogColor.A / 255.0f);
+            shaderProgram.SetInput(DefaultFogDistanceName, distance);
         }
 
         public new static Texture3DShader Create(State state) => new Texture3DShader(state);

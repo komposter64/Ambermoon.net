@@ -1,7 +1,6 @@
 ﻿using Ambermoon.Data.Audio;
 using Ambermoon.Data.Enumerations;
 using System;
-using System.Threading.Tasks;
 
 namespace Ambermoon.AudioFormats
 {

@@ -305,13 +305,15 @@ namespace Ambermoon.Renderer
                     else
                         frameOffset %= NumFrames;
                     currentFrame = BaseFrame + frameOffset;
-                    int newTextureOffsetX = initialTextureOffset.X + (int)currentFrame * Width;
+                    var size = TextureSize ?? new Size(Width, Height);
+                    int textureFactor = (int)(Layer?.TextureFactor ?? 1);
+                    int newTextureOffsetX = initialTextureOffset.X + (int)currentFrame * size.Width * textureFactor;
                     int newTextureOffsetY = initialTextureOffset.Y;
 
                     while (newTextureOffsetX >= TextureAtlasWidth)
                     {
                         newTextureOffsetX -= TextureAtlasWidth;
-                        newTextureOffsetY += Height;
+                        newTextureOffsetY += size.Height * textureFactor;
                     }
 
                     base.TextureAtlasOffset = new Position(newTextureOffsetX, newTextureOffsetY);

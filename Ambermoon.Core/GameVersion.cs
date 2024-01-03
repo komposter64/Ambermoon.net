@@ -1,7 +1,7 @@
 ﻿/*
  * GameVersion.cs - Game version and language
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -27,29 +27,40 @@ namespace Ambermoon
 {
     public enum GameLanguage
     {
-        German,
-        English
+        English,
+        German,        
+        French,
+        Polish
     }
 
     public class GameVersion
     {
         public string Version;
-        public string Language;
+        public GameLanguage Language;
         public string Info;
         public Features Features;
+        public bool MergeWithPrevious;
+        public bool ExternalData;
         public Func<IGameData> DataProvider;
 
-        internal const string RemakeReleaseDate = "01-02-2023";
+        internal const string RemakeReleaseDate = "28-12-2023";
     }
 
     public static class GameLanguageExtensions
     {
         public static GameLanguage ToGameLanguage(this string languageString)
         {
+            if (System.Enum.TryParse(languageString, out GameLanguage gameLanguage))
+                return gameLanguage;
+
             languageString = languageString.ToLower().Trim();
 
-            if (languageString == "deutsch" || languageString == "german" || languageString == "deu" || languageString == "de")
+            if (languageString == "german" || languageString == "deutsch" || languageString == "ger" || languageString == "de")
                 return GameLanguage.German;
+            if (languageString == "french" || languageString == "français" || languageString == "fre" || languageString == "fr")
+                return GameLanguage.French;
+            if (languageString == "polish" || languageString == "polski" || languageString == "pol" || languageString == "pl")
+                return GameLanguage.Polish;
 
             return GameLanguage.English;
         }

@@ -40,15 +40,18 @@ namespace Ambermoon.Data
         /// </summary>
         public ushort CharacterBitIndex { get; set; }
         public Condition Conditions { get; set; }
-        public ushort UnknownWord34 { get; set; }
+        /// <summary>
+        /// This was called "Battle round spell point usage".
+        /// </summary>
+        public ushort UnusedWord34 { get; set; }
         public CharacterValueCollection<Attribute> Attributes { get; } = new CharacterValueCollection<Attribute>(10); // 8 attribute + age + a hidden attribute
         public CharacterValueCollection<Skill> Skills { get; } = new CharacterValueCollection<Skill>(10);
         public CharacterValue HitPoints { get; } = new CharacterValue();
         public CharacterValue SpellPoints { get; } = new CharacterValue();
-        public short BaseAttack { get; set; }
+        public short BaseAttackDamage { get; set; }
         public short BaseDefense { get; set; }
-        public short VariableAttack { get; set; }
-        public short VariableDefense { get; set; }
+        public short BonusAttackDamage { get; set; }
+        public short BonusDefense { get; set; }
         public short MagicAttack { get; set; }
         public short MagicDefense { get; set; }
         public ushort AttacksPerRoundIncreaseLevels { get; set; }
@@ -56,7 +59,8 @@ namespace Ambermoon.Data
         public ushort SpellPointsPerLevel { get; set; }
         public ushort SpellLearningPointsPerLevel { get; set; }
         public ushort TrainingPointsPerLevel { get; set; }
-        public ushort UnknownWord236 { get; set; }
+        // 0 for most chars but there are exceptions like Dönner
+        public ushort LookAtCharTextIndex { get; set; }
         public uint ExperiencePoints { get; set; }
         public uint LearnedHealingSpells { get; set; }
         public uint LearnedAlchemisticSpells { get; set; }
@@ -105,6 +109,7 @@ namespace Ambermoon.Data
                 Spell.DestroyUndead => !undead || boss,
                 Spell.HolyWord => !undead || boss,
                 Spell.GhostWeapon => Element == CharacterElement.Spirit,
+                Spell.GhostInferno => Element == CharacterElement.Spirit,
                 Spell.LPStealer => Element == CharacterElement.Undead,
                 Spell.SPStealer => Element == CharacterElement.Spirit,
                 Spell.MonsterKnowledge => Element == CharacterElement.Mental,

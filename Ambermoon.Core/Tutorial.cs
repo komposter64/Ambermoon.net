@@ -29,7 +29,6 @@ namespace Ambermoon
 {
     internal class Tutorial
     {
-        // TODO: add other languages later
         static readonly Dictionary<GameLanguage, string[]> texts = new Dictionary<GameLanguage, string[]>
         {
             { GameLanguage.German, new string[]
@@ -80,6 +79,55 @@ namespace Ambermoon
                 "or characters like NPCs.",
                 // End
                 "Now I'm quiet. Have fun playing Ambermoon!"
+            } },
+            { GameLanguage.French, new string[]
+            {
+                // Introduction
+                "Bonjour ~SELF~ et bienvenue sur Ambermoon Remake.^^Avez-vous besoin d'une petite introduction ?",
+                // Tip 1
+                "Les boutons situés dans la partie inférieure droite de l'écran permettent d'accéder à " +
+                "de nombreuses fonctions utiles du jeu. Si vous êtes sur l'écran principal, vous pouvez " +
+                "faire basculer les boutons en appuyant sur le bouton droit de la souris tout en survolant " +
+                "la zone ou en appuyant sur la touche Retour. Cela révèle des fonctions supplémentaires.",
+                // Tip 2
+                "Vous pouvez également utiliser le pavé numérique de votre clavier pour contrôler ces boutons." +
+                "La disposition est exactement la même que celle des boutons du jeu. Ainsi, appuyer sur la " +
+                "touche 7 équivaudra à appuyer sur le bouton supérieur gauche (l'œil).",
+                // Tip 3
+                "Dans la partie supérieure, vous voyez les portraits des personnages. Vous pouvez cliquer sur " +
+                "eux pour sélectionner le joueur actif ou faire un clic droit pour ouvrir les inventaires." +
+                "Les touches 1 à 6 du clavier permettent de sélectionner un joueur et les touches F1 à F6 " +
+                "ouvrent les inventaires.",
+                // Tip 4
+                "Vous pouvez vous déplacer sur les cartes à l'aide de la souris, des touches W, A, S, D ou " +
+                "des touches du curseur. En 2D, vous pouvez faire un clic droit sur la carte pour transformer " +
+                "le curseur en curseur d'action afin d'interagir avec des objets ou des personnages comme les PNJ.",
+                // End
+                "Maintenant, je suis silencieux. Amusez-vous bien avec Ambermoon !"
+            } },
+            { GameLanguage.Polish, new string[]
+            {
+                // Introduction
+                "Cześć ~SELF~, witaj w Ambermoon Remake.^^Potrzebujesz małego wprowadzenia?",
+                // Tip 1
+                "Przyciski w prawym dolnym rogu ekranu zapewniają wiele przydatnych funkcji " +
+                "w grze. Na głównym ekranie można je przełączać , naciskając prawy " +
+                "przycisk myszki nad ich obszarem lub wciskając klawisz Return. To pokaże " +
+                "dodatkowe funkcje.",
+                // Tip 2
+                "Do obsługi tych przycisków możesz też użyć klawiatury numerycznej. Układ " +
+                "jest dokładnie taki sam jak przycisków w grze. Tak więc klawisz 7 odpowiada " +
+                "górnemu lewemu przyciskowi (oko).",
+                // Tip 3
+                "W górnej części znajdują się portrety postaci. Kliknięcie w jeden z nich wybiera " +
+                "aktywną postać a prawy klik otwiera ekwipunek. Z klawiatury, klawisze 1-6 wybierają " +
+                "aktywną postać a F1-F6 otworzą ekwipunek.",
+                // Tip 4
+                "Po mapie możesz się poruszać używając myszy, klawiszy W, A, S, D lub strzałek." +
+                "W widoku 2D prawy klik na mapie zmienia kursor w ikonę interakcji z obiektami " +
+                "lub postaciami takimi jak NPC.",
+                // End
+                "Teraz zamilknę. baw się dobrze grając w Ambermoon!"
             } }
         };
 

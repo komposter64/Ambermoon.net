@@ -1,15 +1,18 @@
 ﻿using Ambermoon.Data.Serialization;
 using SonicArranger;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Ambermoon.Data.Legacy.Serialization
 {
+#pragma warning disable CS8981
     using word = UInt16;
     using dword = UInt32;
     using qword = UInt64;
+#pragma warning restore CS8981
 
     public class DataReader : IDataReader, ICustomReader
     {
@@ -139,6 +142,9 @@ namespace Ambermoon.Data.Legacy.Serialization
 
         public string ReadString(int length, Encoding encoding)
         {
+            if (length == 0)
+                return string.Empty;
+
             CheckOutOfRange(length);
             var str = encoding.GetString(data, Position, length);
             str = str.Replace(encoding.GetString(new byte[] { 0xb4 }), "'");
@@ -153,18 +159,38 @@ namespace Ambermoon.Data.Legacy.Serialization
 
         public string ReadNullTerminatedString(Encoding encoding)
         {
-            string result = "";
-            byte[] buffer = new byte[1];
+            List<byte> buffer = new();
+            byte b;
+            bool needMoreBytes = false;
 
-            while (Position < Size && (buffer[0] = ReadByte()) != 0)
+            while (Position < Size && ((b = ReadByte()) != 0 || needMoreBytes))
             {
-                if (buffer[0] == 0xb4)
-                    result += "'";
-                else
-                    result += encoding.GetString(buffer);
+                buffer.Add(b);
+
+                // When parsing multi-byte encodings there might be characters which
+                // end with a 00-byte. As this is also used for termination we have
+                // to check for character ending if the next byte is 00.
+                if (!encoding.IsSingleByte && Position < Size && PeekByte() == 0)
+                {
+                    try
+                    {
+                        encoding.GetString(buffer.ToArray());
+                    }
+                    catch (ArgumentException)
+                    {
+                        needMoreBytes = true;
+                    }
+                }
             }
 
-            return result;
+            try
+            {
+                return encoding.GetString(buffer.ToArray());
+            }
+            catch (ArgumentException)
+            {
+                return encoding.GetString(buffer.Take(buffer.Count - 1).ToArray()) + "?";
+            }
         }
 
         public byte PeekByte()

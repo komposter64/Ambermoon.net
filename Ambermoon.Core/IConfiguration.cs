@@ -87,7 +87,7 @@ namespace Ambermoon
         None,
         Lines,
         Grid,
-        Scanlines,
+        Scanline,
         CRT
     }
 
@@ -140,9 +140,11 @@ namespace Ambermoon
         Effects Effects { get; set; }
         bool ShowPlayerStatsTooltips { get; set; }
         bool ShowPyrdacorLogo { get; set; }
-        bool ShowThalionLogo { get; set; }
+        [Obsolete("Now the fantasy intro is shown instead.")]
+        bool? ShowThalionLogo { get; set; }
         bool ShowFloor { get; set; }
         bool ShowCeiling { get; set; }
+        bool ShowFog { get; set; }
         bool ExtendedSavegameSlots { get; set; }
         [Obsolete("Use AdditionalSavegameSlots instead.")]
         string[] AdditionalSavegameNames { get; set; }
@@ -151,10 +153,11 @@ namespace Ambermoon
         AdditionalSavegameSlots[] AdditionalSavegameSlots { get; set; }
         bool ShowSaveLoadMessage { get; set; }
         Movement3D Movement3D { get; set; }
+        GameLanguage Language { get; set; }
 
         void RequestSave();
         void UpgradeAdditionalSavegameSlots();
-        AdditionalSavegameSlots GetOrCreateCurrentAdditionalSavegameSlots();
+        AdditionalSavegameSlots GetOrCreateCurrentAdditionalSavegameSlots(string gameVersionName);
     }
 
     public static class ConfigurationExtensions

@@ -182,7 +182,7 @@ namespace Ambermoon
                 sprite.Layer = renderView.GetLayer(Layer.Misc);
                 sprite.X = (Global.VirtualScreenWidth - frameSize.Width) / 2;
                 sprite.Y = (Global.VirtualScreenHeight - frameSize.Height) / 2;
-                sprite.PaletteIndex = 69;
+                sprite.PaletteIndex = (byte)(renderView.GraphicProvider.FirstFantasyIntroPaletteIndex + 1);
                 return sprite;
             }
 
@@ -198,11 +198,14 @@ namespace Ambermoon
             {
                 var textArea = new Rect(sprite1.X, sprite1.Y + frameSize.Height + 2, frameSize.Width, Global.GlyphLineHeight);
                 var emptyText = renderView.TextProcessor.CreateText(text, '?');
-                renderText = renderView.RenderTextFactory.Create(renderView.GetLayer(Layer.Text), emptyText, Data.Enumerations.Color.White, false);
-                renderText.Place(textArea, TextAlign.Center);
+                var position = Global.GetTextRect(renderView, textArea).Position;
+                renderText = renderView.RenderTextFactory.Create(
+                    (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1), 
+                    renderView.GetLayer(Layer.Text), emptyText, Data.Enumerations.Color.White, false);
+                renderText.Place(Global.GetTextRect(renderView, textArea), TextAlign.Center);
                 textOverlay = renderView.ColoredRectFactory.Create(textArea.Width, textArea.Height + 2, Color.Black, 255);
-                textOverlay.X = textArea.X;
-                textOverlay.Y = textArea.Y - 1;
+                textOverlay.X = position.X;
+                textOverlay.Y = position.Y - 1;
                 textOverlay.Layer = renderView.GetLayer(Layer.Misc);
             }
             else
@@ -215,8 +218,11 @@ namespace Ambermoon
             textOverlay.Visible = true;
         }
 
-        Position GetImageOffset(int index)
-            => (textureAtlasManager ?? TextureAtlasManager.Instance).GetOrCreate(Layer.Misc).GetOffset(0) + new Position(index * frameSize.Width, 0);
+        Position GetImageOffset(IRenderView renderView, int index)
+        {
+            int textureFactor = (int)renderView.GetLayer(Layer.Misc).TextureFactor;
+            return (textureAtlasManager ?? TextureAtlasManager.Instance).GetOrCreate(Layer.Misc).GetOffset(0) + new Position(index * frameSize.Width * textureFactor, 0);
+        }
 
         void ProcessCurrentCommand(IRenderView renderView, bool commandActivated)
         {
@@ -239,8 +245,8 @@ namespace Ambermoon
                         if (noImage)
                         {
                             sprite1.Alpha = 0x00;
-                            sprite1.TextureAtlasOffset = GetImageOffset(command.ImageIndex);
-                            sprite1.Visible = true;
+                            sprite1.TextureAtlasOffset = GetImageOffset(renderView, command.ImageIndex);
+                            sprite1.Visible = false;
                             sprite1.ClipArea = new Rect(sprite1.X + startPosition.X, sprite1.Y + startPosition.Y, 0, 0);
                         }
                         else
@@ -250,10 +256,10 @@ namespace Ambermoon
                             sprite1.ClipArea = new Rect(sprite1.X, sprite1.Y, sprite1.Width, sprite1.Height);
                             sprite1.Alpha = 0xff;
                             sprite2.Alpha = 0x00;
-                            sprite2.TextureAtlasOffset = GetImageOffset(command.ImageIndex);
+                            sprite2.TextureAtlasOffset = GetImageOffset(renderView, command.ImageIndex);
                             sprite2.ClipArea = new Rect(sprite2.X + startPosition.X, sprite2.Y + startPosition.Y, 0, 0);
                             sprite1.Visible = true;
-                            sprite2.Visible = true;
+                            sprite2.Visible = false;
                         }
                     }
                     else
@@ -269,6 +275,7 @@ namespace Ambermoon
                         var sprite = sprite2 ?? sprite1;
                         sprite.Alpha = (byte)Util.Round(elapsed * 0xff);
                         sprite.ClipArea = new Rect(sprite.X + startX, sprite.Y + minY, endX - startX, maxY - minY);
+                        sprite.Visible = sprite.Alpha > 0;
 
                         if (elapsed >= 1)
                             currentCommand = null;
@@ -284,22 +291,22 @@ namespace Ambermoon
                         EnsureSprites(renderView, noImage);
                         if (noImage)
                         {                            
-                            sprite1.TextureAtlasOffset = GetImageOffset(command.ImageIndex);
+                            sprite1.TextureAtlasOffset = GetImageOffset(renderView, command.ImageIndex);
                             sprite1.Alpha = 0x00;
                             sprite1.ClipArea = new Rect(sprite1.X, sprite1.Y, sprite1.Width, sprite1.Height);
-                            sprite1.Visible = true;                            
+                            sprite1.Visible = false;                            
                         }
                         else
                         {
                             if (!noSecondImage && sprite2 != null)
                                 sprite1.TextureAtlasOffset = sprite2.TextureAtlasOffset;
-                            sprite2.TextureAtlasOffset = GetImageOffset(command.ImageIndex);
+                            sprite2.TextureAtlasOffset = GetImageOffset(renderView, command.ImageIndex);
                             sprite1.Alpha = 0xff;
                             sprite2.Alpha = 0x00;                            
                             sprite1.ClipArea = new Rect(sprite1.X, sprite1.Y, sprite1.Width, sprite1.Height);
                             sprite2.ClipArea = new Rect(sprite2.X, sprite2.Y, sprite2.Width, sprite2.Height);
                             sprite1.Visible = true;
-                            sprite2.Visible = true;
+                            sprite2.Visible = false;
                         }
                     }
                     else
@@ -307,11 +314,16 @@ namespace Ambermoon
                         var elapsed = command.Time == 0 ? 1.0 : Math.Min(1.0, (DateTime.Now - currentCommandStartTime).TotalMilliseconds / command.Time);
 
                         if (sprite2 == null)
+                        {
                             sprite1.Alpha = (byte)Util.Round(elapsed * 0xff);
+                            sprite1.Visible = sprite1.Alpha > 0;
+                        }
                         else
                         {
                             sprite2.Alpha = (byte)Util.Round(elapsed * 0xff);
                             sprite1.Alpha = (byte)(0xff - sprite2.Alpha);
+                            sprite1.Visible = sprite1.Alpha > 0;
+                            sprite2.Visible = sprite2.Alpha > 0;
                         }
 
                         if (elapsed >= 1)
@@ -344,6 +356,7 @@ namespace Ambermoon
                     {
                         var elapsed = command.Time == 0 ? 1.0 : Math.Min(1.0, (DateTime.Now - currentCommandStartTime).TotalMilliseconds / command.Time);
                         sprite1.Alpha = (byte)Util.Round(0xff - elapsed * 0xff);
+                        sprite1.Visible = sprite1.Alpha > 0;
                         audioOutput.Volume = (float)(1.0 - elapsed) * oldVolume;
 
                         if (textOverlay != null)

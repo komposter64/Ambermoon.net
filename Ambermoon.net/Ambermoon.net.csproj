@@ -5,7 +5,7 @@
     <TargetFramework>net7.0</TargetFramework>
     <RootNamespace>Ambermoon</RootNamespace>
     <RuntimeIdentifiers>win-x86;win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
-    <Version>1.8.1</Version>
+    <Version>1.9.4</Version>
     <Copyright>Copyright (C) 2020-2023 by Robert Schneckenhaus</Copyright>
     <Company>Robert Schneckenhaus</Company>
     <Authors>Robert Schneckenhaus</Authors>
@@ -40,7 +40,6 @@
   <ItemGroup>
     <None Remove="ambermoon.cfg" />
     <None Remove="Resources\app.ico" />
-    <None Remove="Resources\IntroFont.dat" />
     <None Remove="Resources\logo.pyr" />
     <None Remove="Resources\song.pyr" />
     <None Remove="Resources\windowIcon.png" />
@@ -74,14 +73,11 @@
     <EmbeddedResource Include="Resources\windowIcon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-    <EmbeddedResource Include="Resources\IntroFont.dat">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="glfw" Version="3.3.8" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NLayer" Version="1.14.0" />
     <PackageReference Include="Silk.NET.GLFW" Version="2.16.0" />
     <PackageReference Include="Silk.NET.Input" Version="2.16.0" />

@@ -32,79 +32,157 @@ namespace Ambermoon.Data.Legacy
 
     public class TextProcessor : ITextProcessor
     {
-        // TODO: Load this from AM2_CPU later
-        static byte CharToGlyph(char ch, bool rune, char? fallbackChar = null)
+        readonly int glyphCount;
+
+        public TextProcessor(int glyphCount)
         {
+            // The original version has 94 glyphs.
+            // Characters like á, à and â share the same glyph
+            // as it wasn't possible to distinguish them in such
+            // small resolution. But with modern fonts there might
+            // by distinct glyphs for all of them. So when this
+            // count is > 94, we have more character glyphs available.
+            this.glyphCount = glyphCount;
+        }
+
+        IEnumerable<byte> CharToGlyph(char ch, bool rune, char? fallbackChar = null)
+        {
+            bool extended = glyphCount > 94;
+
             if (ch >= 'a' && ch <= 'z')
-                return (byte)(ch - 'a' + (rune ? 64 : 0));
+                yield return (byte)(ch - 'a' + (rune ? 64 : 0));
             else if (ch >= 'A' && ch <= 'Z')
-                return (byte)(ch - 'A' + (rune ? 64 : 0));
+                yield return (byte)(ch - 'A' + (rune ? 64 : 0));
             else if (ch == 'ä' || ch == 'Ä')
-                return (byte)(rune ? 92 : 26);
+                yield return (byte)(rune ? 92 : 26);
             else if (ch == 'ü' || ch == 'Ü')
-                return (byte)(rune ? 91 : 27);
+                yield return (byte)(rune ? 91 : 27);
             else if (ch == 'ö' || ch == 'Ö')
-                return (byte)(rune ? 90 : 28);
+                yield return (byte)(rune ? 90 : 28);
             else if (ch == 'ß')
-                return (byte)(rune ? 93 : 29);
+                yield return (byte)(rune ? 93 : 29);
             else if (ch == ';')
-                return 30;
+                yield return 30;
             else if (ch == ':')
-                return 31;
+                yield return 31;
             else if (ch == ',')
-                return 32;
+                yield return 32;
             else if (ch == '.')
-                return 33;
+                yield return 33;
             else if (ch == '\'' || ch == '´' || ch == '`')
-                return 34;
+                yield return 34;
             else if (ch == '"')
-                return 35;
+                yield return 35;
             else if (ch == '!')
-                return 36;
+                yield return 36;
             else if (ch == '?')
-                return 37;
+                yield return 37;
             else if (ch == '*')
-                return 38;
+                yield return 38;
             else if (ch == '_')
-                return 39;
+                yield return 39;
             else if (ch == '(')
-                return 40;
+                yield return 40;
             else if (ch == ')')
-                return 41;
+                yield return 41;
             else if (ch == '%')
-                return 42;
+                yield return 42;
             else if (ch == '/')
-                return 43;
+                yield return 43;
             else if (ch == '#')
-                return 44;
+                yield return 44;
             else if (ch == '-')
-                return 45;
+                yield return 45;
             else if (ch == '+')
-                return 46;
+                yield return 46;
             else if (ch == '=')
-                return 47;
+                yield return 47;
             else if (ch >= '0' && ch <= '9')
-                return (byte)(ch - '0' + 48);
+                yield return (byte)(ch - '0' + 48);
             else if (ch == '&')
-                return 58;
-            else if (ch == 'á' || ch == 'à' || ch == 'â' || ch == 'Á' || ch == 'À' || ch == 'Â')
-                return 59;
-            else if (ch == 'é' || ch == 'è' || ch == 'ê' || ch == 'É' || ch == 'È' || ch == 'Ê')
-                return 60;
+                yield return 58;
+            else if (ch == 'á' || ch == 'Á')
+                yield return (byte)(rune ? 64 : extended ? 94 : 59);
+            else if (ch == 'à' || ch == 'À')
+                yield return (byte)(rune ? 64 : 59);
+            else if (ch == 'â' || ch == 'Â')
+                yield return (byte)(rune ? 64 : extended ? 95 : 59);
+            else if (ch == 'ê' || ch == 'Ê')
+                yield return (byte)(rune ? 68 : 60);
+            else if (ch == 'è' || ch == 'È')
+                yield return (byte)(rune ? 68 : extended ? 96 : 60);
+            else if (ch == 'é' || ch == 'É')
+                yield return (byte)(rune ? 68 : extended ? 97 : 60);
+            else if (ch == 'ç' || ch == '\u0063')
+                yield return (byte)(rune ? 66 : 61);
             else if (ch == '¢')
-                return 61;
+                yield return (byte)(rune ? 66 : extended ? 98 : 61);
             else if (ch == 'û' || ch == 'Û')
-                return 62;
+                yield return (byte)(rune ? 84 : 62);
             else if (ch == 'ô' || ch == 'Ô')
-                return 63;
+                yield return (byte)(rune ? 78 : 63);
+            else if (ch == 'æ' || ch == 'Æ')
+            {
+                if (extended)
+                    yield return 101;
+                else
+                {
+                    yield return (byte)(rune ? 64 : 0); // A
+                    yield return (byte)(rune ? 68 : 4); // E
+                }
+            }
+            else if (ch == 'œ' || ch == 'ɶ' || ch == 'Œ')
+            {
+                if (extended)
+                    yield return 102;
+                else
+                {
+                    yield return (byte)(rune ? 78 : 14); // O
+                    yield return (byte)(rune ? 68 : 4); // E
+                }
+            }
+            else if (ch == 'î' || ch == 'Î')
+                yield return (byte)(rune ? 72 : extended ? 99 : 8);
+            else if (ch == 'ë' || ch == 'Ë')
+                yield return (byte)(rune ? 68 : extended ? 100 : 60);
+            else if (ch == 'ą' || ch == 'Ą')
+                yield return (byte)(rune ? 64 : extended ? 103 : 0);
+            else if (ch == 'ć' || ch == 'Ć')
+                yield return (byte)(rune ? 66 : extended ? 104 : 2);
+            else if (ch == 'ę' || ch == 'Ę')
+                yield return (byte)(rune ? 68 : extended ? 105 : 4);
+            else if (ch == 'ł' || ch == 'Ł')
+                yield return (byte)(rune ? 75 : extended ? 106 : 11);
+            else if (ch == 'ń' || ch == 'Ń')
+                yield return (byte)(rune ? 77 : extended ? 107 : 13);
+            else if (ch == 'ó' || ch == 'Ó')
+                yield return (byte)(rune ? 78 : extended ? 108 : 63);
+            else if (ch == 'ś' || ch == 'Ś')
+                yield return (byte)(rune ? 82 : extended ? 109 : 18);
+            else if (ch == 'ź' || ch == 'Ź')
+                yield return (byte)(rune ? 89 : extended ? 110 : 25);
+            else if (ch == 'ż' || ch == 'Ż')
+                yield return (byte)(rune ? 89 : extended ? 111 : 25);
             else if (ch == ' ')
-                return (byte)SpecialGlyph.SoftSpace;
+                yield return (byte)SpecialGlyph.SoftSpace;
             else if (ch == '$')
-                return (byte)SpecialGlyph.HardSpace;
+                yield return (byte)SpecialGlyph.HardSpace;
             else if (ch == '^')
-                return (byte)SpecialGlyph.NewLine;
+                yield return (byte)SpecialGlyph.NewLine;
             else if (fallbackChar != null)
-                return CharToGlyph(fallbackChar.Value, rune);
+            {
+                foreach (var glyph in CharToGlyph(fallbackChar.Value, rune))
+                    yield return glyph;
+            }
+            else if (ch.ToString().Normalize().Any(c => c > 32 && c < 128))
+            {
+                var glyph = CharToGlyph(ch.ToString().Normalize().First(c => c > 32 && c < 128), rune, ' ').First();
+
+                if (glyph == (byte)SpecialGlyph.SoftSpace)
+                    throw new AmbermoonException(ExceptionScope.Data, $"Unsupported text character '{ch}'.");
+
+                yield return glyph;
+            }
             else
                 throw new AmbermoonException(ExceptionScope.Data, $"Unsupported text character '{ch}'.");
         }
@@ -113,7 +191,7 @@ namespace Ambermoon.Data.Legacy
         {
             try
             {
-                CharToGlyph(ch, false);
+                CharToGlyph(ch, false).Any(); // Any is needed to evaluate the IEnumerable immediately
                 return true;
             }
             catch (AmbermoonException)
@@ -124,7 +202,7 @@ namespace Ambermoon.Data.Legacy
 
         public IText CreateText(string text, char? fallbackChar = null)
         {
-            return FinalizeText(text.Select(ch => CharToGlyph(ch, false, fallbackChar)));
+            return FinalizeText(text.SelectMany(ch => CharToGlyph(ch, false, fallbackChar)));
         }
 
         public IText FinalizeText(IEnumerable<byte> glyphs)
@@ -384,7 +462,7 @@ namespace Ambermoon.Data.Legacy
                     if (glyphIndices.Count != 0 && glyphIndices.Last() >= (byte)SpecialGlyph.FirstColor)
                         glyphIndices.Add((byte)SpecialGlyph.NoTrim);
 
-                    glyphIndices.Add(CharToGlyph(text[i], rune, fallbackChar));
+                    glyphIndices.AddRange(CharToGlyph(text[i], rune, fallbackChar));
                 }
             }
 

@@ -1,7 +1,7 @@
 ﻿/*
  * Button.cs - UI button implementation
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -159,7 +159,7 @@ namespace Ambermoon.UI
                     "Bewegen",
                     "Vorrücken",
                     "Angreifen",
-                    "Abwehren",
+                    "Verteidigen",
                     "Zaubern",
                     "Nötige Spruchlernpunkte ermitteln"
                 }
@@ -227,7 +227,139 @@ namespace Ambermoon.UI
                     "Attack",
                     "Defend",
                     "Cast spell",
-                    "Identify required spell learning points"
+                    "Determine required spell learning points"
+                }
+            },
+            { GameLanguage.French, new string[]
+                {
+                    "Fermer",
+                    "Quitter le jeu",
+                    "Options",
+                    "Sauvegarder le jeu",
+                    "Charger le jeu",
+                    "Nouveau jeu",
+                    "Examiner",
+                    "Toucher",
+                    "Parler",
+                    "Transport",
+                    "Livre de sorts",
+                    "Camp",
+                    "Carte",
+                    "Positions de combat",
+                    "Attendre",
+                    "Statistiques des personnages",
+                    "Inventaire",
+                    "Utiliser un objet",
+                    "Examiner un objet",
+                    "Stocker un objet dans le coffre",
+                    "Stocker l'or dans le coffre",
+                    "Stocker les aliments dans un coffre",
+                    "Jeter un objet",
+                    "Jeter l'or",
+                    "Jeter les aliments",
+                    "Donner de l'or",
+                    "Donner des aliments",
+                    "Distribuer l'or",
+                    "Distribuer des aliments",
+                    "Acheter",
+                    "Vendre",
+                    "Former",
+                    "Guérir la personne",
+                    "Lever une malédiction",
+                    "Guérir l'état de santé",
+                    "Rester pour la nuit",
+                    "Identifier l'équipement",
+                    "Identifier les objets",
+                    "Réparer un objet",
+                    "Recharger un objet",
+                    "Lire le parchemin des sorts",
+                    "Sommeil",
+                    "Crocheter une serrure",
+                    "Trouver un piège",
+                    "Désarmer le piège",
+                    "Répondre",
+                    "Réécouter l'énigme",
+                    "Parler",
+                    "Afficher l'objet",
+                    "Donner l'objet",
+                    "Donner de l'or",
+                    "Donner des aliments",
+                    "Demander à rejoindre le groupe",
+                    "Demande de quitter le groupe",
+                    "Fuir",
+                    "Démarrer les actions",
+                    "Déplacer",
+                    "Advancer",
+                    "Attaquer",
+                    "Défendre",
+                    "Lancer un sort",
+                    "Déterminer les points d'apprentissage des sorts"
+                }
+            },
+            { GameLanguage.Polish, new string[]
+                {
+                    "Zamknij",
+                    "Zakończ grę",
+                    "Opcje",
+                    "Zapisz",
+                    "Wczytaj",
+                    "Nowa gra",
+                    "Sprawdź",
+                    "Dotknij",
+                    "Rozmawiaj",
+                    "Transport",
+                    "Księga czarów",
+                    "Obóz",
+                    "Mapa",
+                    "Pozycja w walce",
+                    "Czekaj",
+                    "Statystyki postaci",
+                    "Ekwipunek",
+                    "Użyj przedmiot",
+                    "Sprawdź przedmiot",
+                    "Schowaj przedmiot w skrzyni",
+                    "Schowaj złoto w skrzyni",
+                    "Schowaj żywność w skrzyni",
+                    "Wyrzuć przedmiot",
+                    "Wyrzuć złoto",
+                    "Wyrzuć żywność",
+                    "Przekaż złoto",
+                    "Przekaż żywność",
+                    "Rozdziel złoto",
+                    "Rozdziel żywność",
+                    "Kup",
+                    "Sprzedaj",
+                    "Trenuj",
+                    "Ulecz osobę",
+                    "Usuń klątwę",
+                    "Ulecz stan",
+                    "Zostań na noc",
+                    "Zidentyfikuj sprzęt",
+                    "Zidentyfikuj przedmioty",
+                    "Napraw przedmiot",
+                    "Naładuj przedmiot",
+                    "Odczytaj zwój zaklęcia",
+                    "Śpij",
+                    "Otwórz zamek",
+                    "Znajdź pułapkę",
+                    "Rozbrój pułapkę",
+                    "Odpowiedz",
+                    "Powtórz zagadkę",
+                    "Powiedz coś",
+                    "Pokaż przedmiot",
+                    "Daj przedmiot",
+                    "Daj złoto",
+                    "Daj żywność",
+                    "Poproś o dołączenie",
+                    "Poproś o odejście",
+                    "Uciekaj",
+                    "Rozpocznij rundę",
+                    "Zmień pozycję",
+                    "Naprzód",
+                    "Atak",
+                    "Obrona",
+                    "Żuć zaklęcie",
+                    "Określ wymagane punkty nauki zaklęć"
                 }
             }
         };
@@ -244,6 +376,7 @@ namespace Ambermoon.UI
         readonly ILayerSprite disableOverlay;
         readonly ILayerSprite iconSprite; // 32x13
         readonly ITextureAtlas textureAtlas;
+        readonly int tooltipYOffset = 0;
         bool pressed = false;
         bool released = true;
         bool rightMouse = false;
@@ -292,8 +425,10 @@ namespace Ambermoon.UI
             disableOverlay.Visible = false;
             iconSprite.Visible = true;
 
+            tooltipYOffset = Global.GlyphLineHeight - renderView.FontProvider.GetFont().GlyphHeight;
             var text = renderView.TextProcessor.CreateText("");
-            tooltip = renderView.RenderTextFactory.Create(renderView.GetLayer(Layer.Text), text, Data.Enumerations.Color.White, true);
+            tooltip = renderView.RenderTextFactory.Create((byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1),
+                renderView.GetLayer(Layer.Text), text, Data.Enumerations.Color.White, true);
             tooltip.DisplayLayer = 254;
             tooltip.Visible = false;
         }
@@ -333,7 +468,7 @@ namespace Ambermoon.UI
                 tooltip.TextColor = TooltipColor;
                 int width = tooltip.Text.MaxLineSize * Global.GlyphWidth;
                 tooltip.X = Math.Min(Global.VirtualScreenWidth - width, offset.X + Area.Center.X - width / 2);
-                tooltip.Y = offset.Y + Area.Top - tooltip.Text.LineCount * Global.GlyphLineHeight + 1;
+                tooltip.Y = offset.Y + Area.Top - tooltip.Text.LineCount * Global.GlyphLineHeight + 1 + tooltipYOffset;
             }
 
             tooltip.Visible = visible;

@@ -1,7 +1,7 @@
 ﻿/*
  * RenderMap3D.cs - Handles 3D map rendering
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -78,6 +78,7 @@ namespace Ambermoon.Render
                 }
                 else
                     frame %= numFrames;
+                // TODO: If this layer is scaled, this won't work anymore.
                 surface.TextureAtlasOffset = map.GetObjectTextureOffset(objectIndex) +
                     new Position((int)(frame * surface.TextureWidth), 0);
             }
@@ -203,7 +204,7 @@ namespace Ambermoon.Render
             {
                 var position = new Position(characterReference.Positions.Count == 1
                     ? characterReference.Positions[0]
-                    : characterReference.Positions[(int)gameTime.TimeSlot]);
+                    : characterReference.Positions[(int)gameTime.TimeSlot % characterReference.Positions.Count]);
                 position.Offset(-1, -1); // positions are 1-based
                 Position = position;
                 ResetFrame();
@@ -212,6 +213,7 @@ namespace Ambermoon.Render
             void ResetFrame()
             {
                 uint frame = numFrames / 2;
+                // TODO: If this layer is scaled, this won't work anymore.
                 surface.TextureAtlasOffset = map.GetObjectTextureOffset(textureIndex) +
                     new Position((int)(frame * surface.TextureWidth), 0);
             }
@@ -321,7 +323,8 @@ namespace Ambermoon.Render
                         float extrude = surface.Extrude = (-BlockSize / 10.0f) * Math.Max(0.0f, 1.0f - distance) * Global.DistancePerBlock / BlockSize;
                         children.ForEach(c =>
                         {
-                            extrude -= ExtrudeStep;
+                            if (!c.TileFlags.HasFlag(Tileset.TileFlags.Floor))
+                                extrude -= ExtrudeStep;
                             c.surface.Extrude = extrude;
                         });
                         void RestoreExtrude()
@@ -329,7 +332,8 @@ namespace Ambermoon.Render
                             float extrude = surface.Extrude = 8.0f * ExtrudeStep;
                             children.ForEach(c =>
                             {
-                                extrude -= ExtrudeStep;
+                                if (!c.TileFlags.HasFlag(Tileset.TileFlags.Floor))
+                                    extrude -= ExtrudeStep;
                                 c.surface.Extrude = extrude;
                             });
                         }
@@ -408,13 +412,15 @@ namespace Ambermoon.Render
                     {
                         if (trigger == EventTrigger.Eye)
                         {
-                            game.ShowTextPopup(game.ProcessText(conversationPartner.Texts[0]), null);
+                            game.ShowTextPopup(game.ProcessText(conversationPartner.Texts[conversationPartner.LookAtTextIndex]), null);
                             return true;
                         }
-                        else if (trigger == EventTrigger.Mouth)
+                        else if (trigger == EventTrigger.Mouth || (trigger == EventTrigger.Move && characterReference.NPCTalksToYou))
                         {
                             if (conversationPartner == null)
                                 throw new AmbermoonException(ExceptionScope.Data, "Invalid NPC or party member index.");
+
+                            trigger = EventTrigger.Mouth; // important if the NPC talks to you
 
                             conversationPartner.ExecuteEvents(game, trigger, characterIndex);
                             return true;
@@ -478,6 +484,7 @@ namespace Ambermoon.Render
                         else
                             frame %= numFrames;
 
+                        // TODO: If this layer is scaled, this won't work anymore.
                         surface.TextureAtlasOffset = map.GetObjectTextureOffset(textureIndex) +
                             new Position((int)(frame * surface.TextureWidth), 0);
                     }
@@ -675,14 +682,11 @@ namespace Ambermoon.Render
                     character3D.MoveToTile((uint)newPosition.X, (uint)newPosition.Y);
             }
 
-            public void Update(uint ticks, ITime gameTime)
+            public void Update(uint ticks, ITime gameTime, FloatPosition playerPosition)
             {
                 if (!Active || character3D.Paused || parent != null)
                     return;
 
-                var camera = (game.RenderPlayer as Player3D).Camera;
-                Geometry.Geometry.CameraToMapPosition(map.Map, camera.X, camera.Z, out float mapX, out float mapY);
-                var playerPosition = new FloatPosition(mapX - 0.5f * Global.DistancePerBlock, mapY - 0.5f * Global.DistancePerBlock);
                 var distance = GetDistance(playerPosition.X, playerPosition.Y, character3D.RealPosition.X, character3D.RealPosition.Y) / Global.DistancePerBlock;
                 var obj = map.labdata.Objects[(int)characterReference.GraphicIndex - 1];
                 var subObject = obj.SubObjects[0];
@@ -703,12 +707,12 @@ namespace Ambermoon.Render
 
                 bool randomMovement = characterReference.CharacterFlags.HasFlag(Flags.RandomMovement);
 
-                if (!randomMovement && characterReference.Type != CharacterType.Monster)
+                if (!randomMovement && characterReference.Type != CharacterType.Monster && !characterReference.Stationary)
                 {
                     // Walk a given path every day time slot
                     uint lastTimeSlot = gameTime.TimeSlot == 0 ? 287 : gameTime.TimeSlot - 1;
-                    var lastPosition = new Position(characterReference.Positions[(int)lastTimeSlot]);
-                    var newPosition = new Position(characterReference.Positions[(int)gameTime.TimeSlot]);
+                    var lastPosition = new Position(characterReference.Positions[(int)lastTimeSlot % characterReference.Positions.Count]);
+                    var newPosition = new Position(characterReference.Positions[(int)gameTime.TimeSlot % characterReference.Positions.Count]);
                     if (newPosition.X != 0 && newPosition.Y != 0)
                         newPosition.Offset(-1, -1); // positions are 1-based
                     if (lastPosition.X == 0 && lastPosition.Y == 0)
@@ -802,6 +806,7 @@ namespace Ambermoon.Render
         List<IColoredRect> skyColors = null;
         readonly List<KeyValuePair<Position, IColoredRect>> stars = new List<KeyValuePair<Position, IColoredRect>>();
         SkySprite horizonSprite = null;
+        IColoredRect horizonFog = null;
         ISurface3D floor = null;
         ISurface3D ceiling = null;
         Labdata labdata = null;
@@ -939,6 +944,11 @@ namespace Ambermoon.Render
                     sprite.Y = y;
                     return sprite;
                 });
+                horizonFog = renderView.ColoredRectFactory.Create(144, 21, Color.Transparent, 50);
+                horizonFog.Layer = renderView.GetLayer(Layer.Map3DBackgroundFog);
+                horizonFog.X = Global.Map3DViewX;
+                horizonFog.Y = Global.Map3DViewY + ceilingColor.Height - 21;
+                horizonFog.Visible = false;
             }
         }
 
@@ -980,11 +990,12 @@ namespace Ambermoon.Render
                 Destroy();
 
                 Map = map;
-                labdata = mapManager.GetLabdataForMap(map);
+                labdata = mapManager.GetLabdataForMap(map);                
                 EnsureLabdataTextureAtlas();
                 EnsureChangeableBlocks();
                 UpdateSurfaces();
                 SetupBackground();
+                SetFog(map, labdata);
                 AddCharacters();
 
                 SetCameraHeight(race);
@@ -998,11 +1009,90 @@ namespace Ambermoon.Render
             camera.TurnTowards((float)playerDirection * 90.0f);
         }
 
-        public float GetFloorY() => -0.25f * ReferenceWallHeight / BlockSize;
+        internal void SetFog(Map map, Labdata labdata, bool lightOff = false)
+        {
+            Color fogColor;
+            float fogDistance;
+            bool lightActive = !lightOff && game.CurrentSavegame.IsSpellActive(ActiveSpellType.Light);
 
-        public float GetLevitatingY() => -0.75f * ReferenceWallHeight / BlockSize;
+            if (game.Configuration.ShowFog && game.CanSee())
+            {
+                if (map.Flags.HasFlag(MapFlags.Sky))
+                {
+                    byte component;
+                    byte alpha;
 
-        public float GetLevitatingStepSize() => ReferenceWallHeight / (BlockSize * 40.0f);
+                    if (game.GameTime.Hour < 4) // 0-3 (black fog)
+                    {
+                        alpha = (byte)(game.GameTime.Hour < 3 ? 192 : 192 - game.GameTime.Minute);
+                        component = 0;
+                        fogDistance = 6;
+                    }
+                    else if (game.GameTime.Hour < 9) // 4-8 (black to white fog)
+                    {
+                        alpha = 128;
+                        component = (byte)Math.Min(255, (game.GameTime.Hour - 4) * 60 + game.GameTime.Minute);
+                        fogDistance = 7;
+                    }
+                    else if (game.GameTime.Hour < 12) // 9-11 (white to no fog)
+                    {
+                        alpha = (byte)((12 - game.GameTime.Hour) * 255 / 6);
+                        component = 255;
+                        fogDistance = game.GameTime.Hour - 1;
+                    }
+                    else if (game.GameTime.Hour < 17) // 12-16 (no fog)
+                    {
+                        alpha = 0;
+                        component = 0;
+                        fogDistance = 10;
+                    }
+                    else // 17-23 (no to black fog)
+                    {
+                        int factor = 11;
+                        alpha = (byte)((game.GameTime.Hour - 16) * 255 / factor);
+                        component = 0;
+                        fogDistance = 7;
+                    }
+                    byte r = Map.World == World.Morag ? (byte)Math.Min(component * 3 / 2, 255) : component;
+                    byte g = Map.World != World.Lyramion ? (byte)Math.Min(component * 3 / 2, 255) : component;
+                    fogColor = new Color(r, g, component, alpha);                    
+                    if (lightActive && fogDistance < 7.5f)
+                        fogDistance += game.CurrentSavegame.GetActiveSpellLevel(ActiveSpellType.Light) * 2.0f - 1.0f;
+                    fogDistance *= Global.DistancePerBlock;
+                }
+                else if (map.Flags.HasFlag(MapFlags.Indoor))
+                {
+                    fogColor = new Color(128, 128, 96, 112);
+                    fogDistance = Global.DistancePerBlock * 8.0f;
+                }
+                else
+                {
+                    fogColor = game.GetPaletteColor((byte)map.PaletteIndex, labdata.CeilingColorIndex).WithFactor(0.25f);
+                    fogDistance = Global.DistancePerBlock * (4.5f + game.CurrentSavegame.GetActiveSpellLevel(ActiveSpellType.Light) * 2.0f);
+                }
+
+                if (horizonFog != null)
+                {
+                    horizonFog.Color = new Color(fogColor, (byte)(Util.Min(fogColor.A / 2, 32 + fogColor.R, 32 + fogColor.G, 32 + fogColor.B)));
+                    horizonFog.Visible = fogColor.A != 0;
+                }
+            }
+            else
+            {
+                fogColor = Color.Transparent;
+                fogDistance = 100.0f;
+                if (horizonFog != null)
+                    horizonFog.Visible = false;
+            }
+
+            renderView.SetFog(fogColor, fogDistance);
+        }
+
+        public static float GetFloorY() => -0.25f * ReferenceWallHeight / BlockSize;
+
+        public static float GetLevitatingY() => -0.75f * ReferenceWallHeight / BlockSize;
+
+        public static float GetLevitatingStepSize() => ReferenceWallHeight / (BlockSize * 40.0f);
 
         public void SetCameraHeight(Race race)
         {
@@ -1035,6 +1125,7 @@ namespace Ambermoon.Render
             floor?.Delete();
             ceiling?.Delete();
             horizonSprite?.Destroy();
+            horizonFog?.Delete();
             skyColors?.ForEach(c => c?.Delete());
             if (reset)
             {
@@ -1047,6 +1138,7 @@ namespace Ambermoon.Render
             floor = null;
             ceiling = null;
             horizonSprite = null;
+            horizonFog = null;
             skyColors = null;
 
             walls.Values.ToList().ForEach(walls => walls.ForEach(wall => wall?.Delete()));
@@ -1634,6 +1726,7 @@ namespace Ambermoon.Render
         public void HideSky()
         {
             renderView.PaletteReplacement = null;
+            renderView.HorizonPaletteReplacement = null;
             renderView.SetSkyColorReplacement(null, null);
             stars.ForEach(s => s.Value.Visible = false);
             if (skyColors != null)
@@ -1661,8 +1754,11 @@ namespace Ambermoon.Render
                 renderView.GraphicProvider);
             var paletteReplacement = lightEffectProvider.GetLightPaletteReplacement(Map, time.Hour, time.Minute,
                 buffLightIntensity, renderView.GraphicProvider);
+            var horizonPaletteReplacement = lightEffectProvider.GetLightPaletteReplacement(Map, time.Hour, time.Minute,
+                0, renderView.GraphicProvider);
 
             renderView.PaletteReplacement = paletteReplacement;
+            renderView.HorizonPaletteReplacement = horizonPaletteReplacement;
 
             SetColors(paletteReplacement);
 
@@ -1726,8 +1822,15 @@ namespace Ambermoon.Render
             foreach (var mapObject in objects)
                 mapObject.Value.ForEach(obj => obj.Update(ticks));
 
-            foreach (var mapCharacter in mapCharacters.Values)
-                mapCharacter.Update(ticks, gameTime);
+            if (mapCharacters.Any(c => c.Value.Active))
+            {
+                var camera = (game.RenderPlayer as Player3D).Camera;
+                Geometry.Geometry.CameraToMapPosition(Map, camera.X, camera.Z, out float mapX, out float mapY);
+                var playerPosition = new FloatPosition(mapX - 0.5f * Global.DistancePerBlock, mapY - 0.5f * Global.DistancePerBlock);
+
+                foreach (var mapCharacter in mapCharacters.Values)
+                    mapCharacter.Update(ticks, gameTime, playerPosition);
+            }
         }
 
         public void UpdateCharacterVisibility(uint characterIndex)

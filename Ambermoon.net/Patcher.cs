@@ -1,6 +1,4 @@
-﻿using Ambermoon.Data;
-using Ambermoon.Data.Enumerations;
-using Ambermoon.Data.Legacy.ExecutableData;
+﻿using Ambermoon.Data.Enumerations;
 using Ambermoon.Render;
 using System;
 using System.Collections.Generic;
@@ -12,6 +10,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -100,14 +99,13 @@ namespace Ambermoon
 
             var culture = CultureInfo.DefaultThreadCurrentCulture ?? CultureInfo.CurrentCulture;
             var cultureName = culture?.Name ?? "";
-            language = cultureName == "de" || cultureName.StartsWith("de-") ? GameLanguage.German : GameLanguage.English;
+            language = cultureName == "de" || cultureName.StartsWith("de-") ? GameLanguage.German :
+                cultureName == "fr" || cultureName.StartsWith("fr-") ? GameLanguage.French :
+                cultureName == "pl" || cultureName.StartsWith("pl-") ? GameLanguage.Polish : GameLanguage.English;
             var textureAtlas = textureAtlasManager.GetOrCreate(Layer.UI);
-            var fontTextureAtlas = textureAtlasManager.GetOrCreate(Layer.Text);
             var spriteFactory = renderView.SpriteFactory;
             var layer = renderView.GetLayer(Layer.UI);
-            var executableData = ExecutableData.FromGameData(renderView.GameData as ILegacyGameData);
-            cursor = new Render.Cursor(renderView, executableData.Cursors.Entries.Select(c => new Position(c.HotspotX, c.HotspotY)).ToList().AsReadOnly(),
-                textureAtlasManager);
+            cursor = new Render.Cursor(renderView, renderView.GameData.CursorHotspots, textureAtlasManager);
 
             #region Window
             void AddBorder(UIGraphic frame, int column, int row)
@@ -143,7 +141,7 @@ namespace Ambermoon
             #endregion
         }
 
-        static readonly Dictionary<GameLanguage, string[]> Texts = new Dictionary<GameLanguage, string[]>
+        static readonly Dictionary<GameLanguage, string[]> Texts = new()
         {
             { GameLanguage.German, new string[]
                 {
@@ -156,7 +154,8 @@ namespace Ambermoon
                     "Ambermoon {0} wird heruntergeladen ...",
                     "{0} von {1}",
                     "Fertig",
-                    "Download abbrechen"
+                    "Download abbrechen",
+                    "Fehler beim Patchen. Bitte lade dir die neuste Version manuell herunter."
                 }
             },
             { GameLanguage.English, new string[]
@@ -170,7 +169,38 @@ namespace Ambermoon
                     "Downloading Ambermoon {0} ...",
                     "{0} of {1}",
                     "Done",
-                    "Cancel download"
+                    "Cancel download",
+                    "Failed to apply patch. Please download the most recent version manually."
+                }
+            },
+            { GameLanguage.French, new string[]
+                {
+                    "Voulez-vous utiliser le patcheur ? Cela augmente légèrement le temps de démarrage et vous avez besoin d'un accès à l'internet. Mais les nouvelles versions seront alors détectées automatiquement et pourront être installées directement.",
+                    "Si vous décidez d'utiliser le patcheur plus tard, vous pouvez l'activer manuellement dans le fichier de configuration 'ambermoon.cfg'.",
+                    "Cliquez pour continuer",
+                    "Une nouvelle version est disponible ! Voulez-vous la télécharger et l'installer maintenant ?",
+                    "La nouvelle version n'a pas été trouvée. Veuillez le signaler à Pyrdacor (trobt(at)web.de).",
+                    "Le téléchargement de la nouvelle version a échoué. Veuillez réessayer plus tard ou la télécharger manuellement.",
+                    "Télécharger Ambermoon {0} ...",
+                    "{0} de {1}",
+                    "Terminé",
+                    "Annuler",
+                    "Échec de l'application du correctif. Veuillez télécharger manuellement la version la plus récente."
+                }
+            },
+            { GameLanguage.Polish, new string[]
+                {
+                    "Czy chcesz używać patchera? Nieznacznie wydłuża to czas uruchamiania i wymaga dostępu do Internetu. Nowe wersje będą jednak wykrywane i możliwe do pobrania  automatycznie.",
+                    "Jeśli zdecydujesz się użyć patchera później, możesz aktywować go ręcznie w pliku konfiguracyjnym \"ambermoon.cfg\".",
+                    "Kliknij, aby kontynuować",
+                    "Dostępna jest nowa wersja! Czy chcesz ją pobrać i zainstalować?",
+                    "Nowa wersja nie została znaleziona. Prosimy o zgłoszenie tego do Pyrdacora (trobt(at)web.de).",
+                    "Nie udało się pobrać nowej wersji. Spróbuj ponownie później lub pobierz ją ręcznie.",
+                    "Pobieranie Ambermoon {0} ...",
+                    "{0} z {1}",
+                    "Gotowe",
+                    "Anuluj pobieranie",
+                    "Nie udało się zastosować poprawki. Pobierz najnowszą wersję ręcznie."
                 }
             }
         };
@@ -186,7 +216,8 @@ namespace Ambermoon
             Downloading,
             Progress,
             Done,
-            AbortButton
+            AbortButton,
+            FailedToPatch
         }
 
         string GetText(TextId index)
@@ -239,7 +270,7 @@ namespace Ambermoon
             }
         }
 
-        public void CheckPatches(Action<Func<bool>> closeAppAction, Action noPatchAction, ref int timeout)
+        public void CheckPatches(Action<bool> closeAppAction, Action noPatchAction, ref int timeout)
         {
             string version;
             using var httpClient = new HttpClient();
@@ -316,6 +347,13 @@ namespace Ambermoon
                     Console.WriteLine("Error determining available patches: " + ex.ToString());
                 }
 
+                noPatchAction?.Invoke();
+                return;
+            }
+
+            if (!TestWritePermission())
+            {
+                Console.WriteLine($"There is a new version but the patcher has no write permission to the installation directory \"{Configuration.ExecutableDirectoryPath}\". Try to start the game as an administrator to allow the patcher to update the files.");
                 noPatchAction?.Invoke();
                 return;
             }
@@ -431,7 +469,7 @@ namespace Ambermoon
 
                             clickHandler = () =>
                             {
-                                closeAppAction(() => WriteAndRunInstaller(tempPath));
+                                WriteAndRunInstaller(tempPath, closeAppAction);
                             };
                         }
                         else if (!finished)
@@ -531,7 +569,7 @@ namespace Ambermoon
 
         Render.Color GetPaletteColor(byte colorIndex)
         {
-            var paletteData = renderView.GraphicProvider.Palettes[50].Data;
+            var paletteData = renderView.GraphicProvider.Palettes[renderView.GraphicProvider.PrimaryUIPaletteIndex].Data;
             return new Render.Color
             (
                 paletteData[colorIndex * 4 + 0],
@@ -569,8 +607,9 @@ namespace Ambermoon
 
             try
             {
-                var uiText = new UI.UIText(renderView, 49,
-                    renderView.TextProcessor.WrapText(renderView.TextProcessor.CreateText(text, '?'), area, new Size(Global.GlyphWidth, Global.GlyphLineHeight)), area, displayLayer);
+                var uiText = new UI.UIText(renderView, (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1),
+                    renderView.TextProcessor.WrapText(renderView.TextProcessor.CreateText(text, '?'),
+                    area, new Size(Global.GlyphWidth, Global.GlyphLineHeight)), Global.GetTextRect(renderView, area), displayLayer);
                 uiText.SetTextColor(color);
                 uiText.SetTextAlign(textAlign);
                 uiText.Visible = true;
@@ -648,8 +687,10 @@ namespace Ambermoon
         {
             if (clickHandler != null)
             {
+                var oldHandler = clickHandler;
                 clickHandler();
-                clickHandler = null;
+                if (clickHandler == oldHandler)
+                    clickHandler = null;
                 return;
             }
 
@@ -721,18 +762,71 @@ namespace Ambermoon
             }
         }
 
-        bool WriteAndRunInstaller(string downloadPath)
+        static bool TestWritePermission()
+        {
+            var installDirectory = Configuration.ExecutableDirectoryPath;
+            string dummyFile = Path.Combine(installDirectory, "patcher-test.txt");
+
+            // First we try to create a dummy file in the install directory.
+            // If this fails, the patcher won't be able to replace the files.
+            try
+            {
+                if (File.Exists(dummyFile))
+                    File.Delete(dummyFile);
+                File.WriteAllText(dummyFile, "write access test");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (ex is SecurityException || ex is IOException || ex is UnauthorizedAccessException)
+                    return false; // we expect one of these when the user has no write permission
+
+                Console.WriteLine($"Unexpected file write error: {ex}"); // this would be an unexpected error, so we log it
+
+                return false;
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(dummyFile))
+                        File.Delete(dummyFile);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+        }
+
+        void WriteAndRunInstaller(string downloadPath, Action<bool> resultHandler)
         {
             try
             {
                 var installDirectory = Configuration.ExecutableDirectoryPath;
-                Process.Start(patcherPath, $"\"{downloadPath}\" \"{installDirectory}\"");
-                return true;
+                ExecuteAsAdmin(patcherPath, $"\"{downloadPath}\" \"{installDirectory}\"");
+                resultHandler?.Invoke(true);
             }
             catch
             {
                 Console.WriteLine("Unable to write or start the patcher script. Please update the game manually.");
-                return false;
+                CleanUpTextsAndButtons(true);
+                AddText(GetText(TextId.FailedToPatch),
+                    new Rect(clientArea.X + 4, clientArea.Y + 18, clientArea.Width - 8, 42), Data.Enumerations.Color.LightRed, TextAlign.Left, 50, true);
+                AddText(GetText(TextId.ContinueWithClick), new Rect(clientArea.X, clientArea.Y + 64, clientArea.Width, 7),
+                    Data.Enumerations.Color.White, TextAlign.Center, 50, true);
+                clickHandler = () => resultHandler?.Invoke(false);
+            }
+
+            static void ExecuteAsAdmin(string fileName, string args)
+            {
+                var proc = new Process();
+                proc.StartInfo.FileName = fileName;
+                proc.StartInfo.Arguments = args;
+                proc.StartInfo.UseShellExecute = true;
+                proc.StartInfo.Verb = "runas";
+                proc.Start();
             }
         }
     }

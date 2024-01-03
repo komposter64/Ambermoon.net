@@ -73,6 +73,15 @@ namespace Ambermoon
                     ShowMonsters
                 )
             },
+            { "members",
+                Create
+                (
+                    "Shows a list of all available party members." + Environment.NewLine +
+                    "Usage: members" + Environment.NewLine +
+                    "Usage: members <partial_name>",
+                    ShowPartyMembers
+                )
+            },
             { "fight",
                 Create
                 (
@@ -144,6 +153,22 @@ namespace Ambermoon
                     Berserk
                 )
             },
+            { "win",
+                Create
+                (
+                    "Wins the current fight immediately." + Environment.NewLine +
+                    "Usage: win",
+                    Win
+                )
+            },
+            { "flee",
+                Create
+                (
+                    "Flees the current fight immediately." + Environment.NewLine +
+                    "Usage: flee",
+                    Flee
+                )
+            },
             { "light",
                 Create
                 (
@@ -171,7 +196,17 @@ namespace Ambermoon
                     "If you omit the party member index, the selected one gets the levels.",
                     Level
                 )
-            }
+            },
+            { "invite",
+                Create
+                (
+                    "Invites a party member into the party." + Environment.NewLine +
+                    "Usage: invite <party_member_id | party_member_name>" + Environment.NewLine + Environment.NewLine +
+                    "Note: For 'Tar the dark' you can just type Tar." + Environment.NewLine +
+                    "Note: You can also only type the first few letters like 'Sab' for 'Sabine'.",
+                    Invite
+                )
+            },
         };
 
         static KeyValuePair<string, Action<Game, string[]>> Create(string help, Action<Game, string[]> action)
@@ -503,18 +538,18 @@ namespace Ambermoon
                 {
                     case Class.Adventurer:
                     case Class.Alchemist:
-                        partyMember.LearnedAlchemisticSpells = 0xffffffff;
+                        partyMember.LearnedAlchemisticSpells = game.Features.HasFlag(Data.Enumerations.Features.AdvancedSpells) ? 0x7ffffffeu : 0x3ffffffeu;
                         break;
                     case Class.Healer:
                     case Class.Paladin:
-                        partyMember.LearnedHealingSpells = 0xffffffff;
+                        partyMember.LearnedHealingSpells = 0x7ffffffeu;
                         break;
                     case Class.Ranger:
                     case Class.Mystic:
-                        partyMember.LearnedMysticSpells = 0xffffffff;
+                        partyMember.LearnedMysticSpells = game.Features.HasFlag(Data.Enumerations.Features.AdvancedSpells) ? 0x7ffffffeu : 0x0003fffe;
                         break;
                     case Class.Mage:
-                        partyMember.LearnedDestructionSpells = 0xffffffff;
+                        partyMember.LearnedDestructionSpells = 0x7ffffffeu;
                         break;
                 }
             }
@@ -758,6 +793,13 @@ namespace Ambermoon
 
                 return string.Join(", ", monsterNames.Select(m => $"{m.Value}x{m.Key}"));
             }
+        }
+
+        static void ShowPartyMembers(Game game, string[] args)
+        {
+            var partyMembers = game.GetCurrentSavegame().PartyMembers;
+
+            ShowList(args, partyMembers, p => p.Value.Name, p => p.Key, false);
         }
 
         static void StartBattle(Game game, string[] args)
@@ -1152,6 +1194,21 @@ namespace Ambermoon
             Console.WriteLine();
         }
 
+        static void EndFight(Game game, bool flee)
+        {
+            Console.WriteLine();
+
+            if (!game.EndBattle(flee))
+            {
+                Console.WriteLine("There is no active fight, or the fight round is still active or another window is opened.");
+                Console.WriteLine();
+            }
+        }
+
+        static void Win(Game game, string[] args) => EndFight(game, false);
+
+        static void Flee(Game game, string[] args) => EndFight(game, true);
+
         static void Light(Game game, string[] args)
         {
             Console.WriteLine();
@@ -1177,6 +1234,14 @@ namespace Ambermoon
         static void Level(Game game, string[] args)
         {
             Console.WriteLine();
+
+            if (game.WindowOrPopupActive)
+            {
+                Console.WriteLine("Please close all popups and ensure you are on the map screen.");
+                Console.WriteLine("Otherwise the level cheat won't work.");
+                Console.WriteLine();
+                return;
+            }
 
             PartyMember[] GetPartyMembers(int argIndex)
             {
@@ -1221,6 +1286,7 @@ namespace Ambermoon
             {
                 Console.WriteLine("There is no alive target party member.");
                 Console.WriteLine();
+                return;
             }
 
             partyMembers = partyMembers.Where(p => p.Level < 50).ToList();
@@ -1229,6 +1295,7 @@ namespace Ambermoon
             {
                 Console.WriteLine("There is no target party member below max level.");
                 Console.WriteLine();
+                return;
             }
 
             void Finish()
@@ -1262,7 +1329,101 @@ namespace Ambermoon
             )).ToArray();
 
             actions[0]();
+        }
 
+        static void Invite(Game game, string[] args)
+        {
+            Console.WriteLine();
+
+            if (args.Length < 1)
+            {
+                Console.WriteLine("No party member id or name was given.");
+                Console.WriteLine();
+                return;
+            }
+
+            string partyMemberIdOrName = args[0];
+            PartyMember partyMember = null;
+            
+            if (uint.TryParse(partyMemberIdOrName, out uint partyMemberId))
+            {
+                var entries = game.GetCurrentSavegame().PartyMembers;
+
+                if (!entries.TryGetValue(partyMemberId, out partyMember))
+                {
+                    Console.WriteLine($"The given party member id does not exist. Use a value from {entries.Keys.Min()} to {entries.Keys.Max()}.");
+                    Console.WriteLine();
+                    return;
+                }
+            }
+            else
+            {
+                string name = partyMemberIdOrName.ToLower();
+
+                if (name == "tar")
+                {
+                    // There is a problem when entering "Tar" as it will match
+                    // "Tar the dark" and "Targot". But most likey you mean Tar.
+                    // So by adding the space to the search text it should work.
+                    name = "tar ";
+                }
+
+                var partyMembers = game.GetCurrentSavegame().PartyMembers.Values.Where(p => p.Name.ToLower().StartsWith(name)).ToArray();
+
+                if (partyMembers.Length == 0)
+                {
+                    Console.WriteLine("No party member matches the given name.");
+                    Console.WriteLine();
+                    return;
+                }
+                else if (partyMembers.Length > 1)
+                {
+                    if (partyMembers.Length == 2 && partyMembers[0].Index == 1)
+                    {
+                        // If the name matches 2 party members and one of them is the hero,
+                        // just use the other party member for invitation.
+                        partyMember = partyMembers[1];
+                    }
+                    else
+                    {
+                        Console.WriteLine("More than one party member matches the given name.");
+                        Console.WriteLine("Please specify more precise. Here are the matches:");
+                        foreach (var p in partyMembers.Where(x => x.Index != 1))
+                            Console.WriteLine("  - " + p.Name);
+                        Console.WriteLine();
+                        return;
+                    }
+                }
+                else
+                {
+                    partyMember = partyMembers[0];
+                }
+            }
+
+            if (game.PartyMembers.Contains(partyMember))
+            {
+                Console.WriteLine($"{partyMember.Name} is already in the party.");
+                Console.WriteLine();
+                return;
+            }
+
+            int result = game.AddPartyMember(partyMember);
+
+            if (result == -1)
+            {
+                Console.WriteLine($"Wrong window. Please invite party members on the map screen.");
+                Console.WriteLine();
+            }
+            else if (result == -2)
+            {
+                Console.WriteLine($"There are no free party slots.");
+                Console.WriteLine();
+            }
+            else
+            {
+                Console.WriteLine($"{partyMember.Name} joined the party.");
+                Console.WriteLine();
+            }
         }
     }
 }

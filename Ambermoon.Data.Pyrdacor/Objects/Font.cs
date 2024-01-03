@@ -1,20 +1,46 @@
-﻿using Ambermoon.Data.Legacy.Serialization;
-using Ambermoon.Data.Serialization;
+﻿using Ambermoon.Data.Serialization;
 
 namespace Ambermoon.Data.Pyrdacor.Objects
 {
+    /**
+     * Fonts can be monospaced or regular.
+     * The font data always starts with a 4 byte header.
+     * - byte GlyphWidth
+     * - byte GlyphHeight
+     * - word GlyphCount
+     * 
+     * If GlyphWidth is not 0, it is a monospace font and
+     * each glyph uses the given dimensions. The advance
+     * value equals the glyph width in this case. The glyph
+     * image data follows the header immediately.
+     * 
+     * If GlyphWidth is 0, it is a regular font where each
+     * glyph has a different width and optionally also a
+     * different advance value. The glyph height however is
+     * again the same for each glyph as specified in the header.
+     * For each glyph an entry follows the header. The first byte
+     * gives the glyph width. Only the 7 lower bits are considered
+     * so the max glyph width is 127. A width of 0 is possible. The
+     * glyph is not visibile then. If the msb of the value is set,
+     * this means that the glyph has a custom advanced value. In
+     * this case another byte follows giving the advance (0 to 255).
+     * If the msb was instead 0 the advance value equals the given
+     * glyph width.
+     */
     internal class Font
     {
         readonly List<Glyph> glyphs;
         
         public bool Monospace { get; }
+        public int GlyphCount => glyphs.Count;
+        public int GlyphHeight { get; }
 
         public Font(IDataReader dataReader)
         {
             // If 0, this is no monospace font and the width and advance
             // are given as 1 or 2 header bytes for each glyph.
             int glyphWidth = dataReader.ReadByte();
-            int glyphHeight = dataReader.ReadByte();
+            GlyphHeight = dataReader.ReadByte();
             int advance = glyphWidth;
             int count = dataReader.ReadWord();
 
@@ -54,12 +80,12 @@ namespace Ambermoon.Data.Pyrdacor.Objects
                 var graphic = new Graphic
                 {
                     Width = glyphWidth,
-                    Height = glyphHeight,
-                    Data = new byte[glyphWidth * glyphHeight],
+                    Height = GlyphHeight,
+                    Data = new byte[glyphWidth * GlyphHeight],
                     IndexedGraphic = true
                 };
 
-                for (int y = 0; y < glyphHeight; ++y)
+                for (int y = 0; y < GlyphHeight; ++y)
                 {
                     var lineBytes = dataReader.ReadBytes((glyphWidth + 7) / 8);
 

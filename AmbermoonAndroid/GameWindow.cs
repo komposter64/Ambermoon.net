@@ -468,6 +468,10 @@ namespace AmbermoonAndroid
                 textureAtlasManager.AddAll(gameData, graphicProvider, fontProvider, introFont.GlyphGraphics,
                     introData.Graphics.ToDictionary(g => (uint)g.Key, g => g.Value));
                 logoPyrdacor?.Initialize(textureAtlasManager);
+                textureAtlasManager.AddFromGraphics(Layer.Misc, new Dictionary<uint, Graphic>
+                {
+                    { 0u, logoGraphic }
+                });
                 return textureAtlasManager;
             });
             renderView.AvailableFullscreenModes = availableFullscreenModes;
@@ -486,7 +490,6 @@ namespace AmbermoonAndroid
             {
                 try
                 {
-                    var textDictionary = TextDictionary.Load(new TextDictionaryReader(), gameData.GetDictionary());
                     foreach (var objectTextFile in gameData.Files["Object_texts.amb"].Files)
                         executableData.ItemManager.AddTexts((uint)objectTextFile.Key, TextReader.ReadTexts(objectTextFile.Value));
                     var savegameManager = new SavegameManager(savePath);
@@ -510,7 +513,7 @@ namespace AmbermoonAndroid
                             gameCreator = () =>
                             {
                                 var game = new Game(configuration, gameLanguage, renderView, mapManager, executableData.ItemManager,
-                                    characterManager, savegameManager, savegameSerializer, dataNameProvider, textDictionary, places,
+                                    characterManager, savegameManager, savegameSerializer, dataNameProvider, gameData.Dictionary, places,
                                     cursor, lightEffectProvider, audioOutput, songManager, FullscreenChangeRequest, ChangeResolution,
                                     QueryPressedKeys, new OutroFactory(renderView, outroData, outroFont, outroFontLarge), features);
                                 game.QuitRequested += window.Close;
@@ -716,6 +719,7 @@ namespace AmbermoonAndroid
             {
                 textureAtlasManager.AddUIOnly(graphicProvider, fontProvider);
                 logoPyrdacor?.Initialize(textureAtlasManager);
+                versionSelector.Initialize(textureAtlasManager);
                 return textureAtlasManager;
             });
             renderView.AvailableFullscreenModes = availableFullscreenModes;

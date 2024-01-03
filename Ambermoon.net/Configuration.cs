@@ -1,7 +1,8 @@
 ﻿using Ambermoon.Data.Legacy;
 using Newtonsoft.Json;
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -11,15 +12,27 @@ namespace Ambermoon
 {
     internal class Configuration : IConfiguration
     {
-        [JsonIgnore]
-        internal static readonly string[] VersionSavegameFolders = new string[5]
+        internal const string ConfigurationFileName = "ambermoon.cfg";
+        internal const string ExternalSavegameFolder = "external";
+
+        internal static string GetVersionSavegameFolder(GameVersion gameVersion)
         {
-            "german",
-            "english",
-            "advanced_german",
-            "advanced_english",
-            "external"
-        };
+            if (gameVersion.ExternalData)
+                return ExternalSavegameFolder;
+
+            if (gameVersion.Info.ToLower().Contains("advanced"))
+                return $"advanced_{gameVersion.Language.ToString().ToLower()}";
+
+            return gameVersion.Language.ToString().ToLower();
+        }
+
+        internal static IEnumerable<string> GetAllPossibleSavegameFolders()
+        {
+            var folders = new List<string> { ExternalSavegameFolder };
+            folders.AddRange(Enum.GetValues<GameLanguage>().Select(l => l.ToString().ToLower()));
+            folders.AddRange(Enum.GetValues<GameLanguage>().Select(l => $"advanced_{l.ToString().ToLower()}"));
+            return folders;
+        }
 
         public event Action SaveRequested;
         [JsonIgnore]
@@ -56,10 +69,8 @@ namespace Ambermoon
         public bool AutoDerune { get; set; } = true;
         public bool EnableCheats { get; set; } = false;
         public bool ShowButtonTooltips { get; set; } = true;
-        [JsonIgnore] // TODO: remove attribute later
-        public bool ShowFantasyIntro { get; set; } = false; // TODO: change to true later
-        [JsonIgnore] // TODO: remove attribute later
-        public bool ShowIntro { get; set; } = false; // TODO: change to true later
+        public bool ShowFantasyIntro { get; set; } = true;
+        public bool ShowIntro { get; set; } = true;
         [Obsolete("Use GraphicFilter instead.")]
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public bool? UseGraphicFilter { get; set; } = null;
@@ -68,9 +79,12 @@ namespace Ambermoon
         public Effects Effects { get; set; } = Effects.None;
         public bool ShowPlayerStatsTooltips { get; set; } = true;
         public bool ShowPyrdacorLogo { get; set; } = true;
-        public bool ShowThalionLogo { get; set; } = true;
+        [Obsolete("Now the fantasy intro is shown instead.")]
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public bool? ShowThalionLogo { get; set; } = null;
         public bool ShowFloor { get; set; } = true;
         public bool ShowCeiling { get; set; } = true;
+        public bool ShowFog { get; set; } = true;
         public bool ExtendedSavegameSlots { get; set; } = true;
         [Obsolete("Use AdditionalSavegameSlots instead.")]
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
@@ -81,6 +95,13 @@ namespace Ambermoon
         public AdditionalSavegameSlots[] AdditionalSavegameSlots { get; set; }
         public bool ShowSaveLoadMessage { get; set; } = false;
         public Movement3D Movement3D { get; set; } = Movement3D.WASD;
+        public GameLanguage Language { get; set; } = (CultureInfo.DefaultThreadCurrentCulture ?? CultureInfo.CurrentCulture)?.Name?.ToLower() switch
+        {
+            string l when l.StartsWith("de") => GameLanguage.German,
+            string l when l.StartsWith("fr") => GameLanguage.French,
+            string l when l.StartsWith("pl") => GameLanguage.Polish,
+            _ => GameLanguage.English
+        };
 
         public void RequestSave() => SaveRequested?.Invoke();
 
@@ -139,13 +160,75 @@ namespace Ambermoon
             }
         }
 
+        public static void FixMacOSPaths()
+        {
+            try
+            {
+                if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(12))
+                {
+                    // As we changed the place where the config, saves and other files are
+                    // stored for macOS 12 and higher we have to check if there were old configs
+                    // or saves beforehand and move them over.
+
+                    static void CheckAndMovePath(string relativePath, Func<string, bool> existChecker,
+                        Action<string, string> moveAction, bool catchException)
+                    {
+                        try
+                        {
+                            string newPath = Path.Combine(BundleDirectory, relativePath);
+
+                            if (!existChecker(newPath))
+                            {
+                                string oldConfigPath = Path.Combine(ReadonlyBundleDirectory, relativePath);
+
+                                if (existChecker(oldConfigPath))
+                                    moveAction(oldConfigPath, newPath);
+                                else
+                                {
+                                    oldConfigPath = Path.Combine(FallbackConfigDirectory, relativePath);
+
+                                    if (existChecker(oldConfigPath))
+                                        moveAction(oldConfigPath, newPath);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            if (!catchException)
+                                throw;
+                        }
+                    }
+
+                    // Move old config over
+                    CheckAndMovePath(ConfigurationFileName, File.Exists, File.Move, true);
+
+                    // Move old save folder over
+                    try
+                    {
+                        CheckAndMovePath("Saves", Directory.Exists, Directory.Move, false);
+                    }
+                    catch
+                    {
+                        CheckAndMovePath("SavesRemake", Directory.Exists, Directory.Move, true);
+                    }
+
+                    // Move screenshots folder
+                    CheckAndMovePath("Screenshots", Directory.Exists, Directory.Move, true);
+                }
+            }
+            catch
+            {
+                // ignore errors
+            }
+        }
+
 #pragma warning disable CS0618
         public void UpgradeAdditionalSavegameSlots()
         {
             if (AdditionalSavegameSlots != null)
                 return;
 
-            AdditionalSavegameSlots = VersionSavegameFolders.Select(f => new AdditionalSavegameSlots
+            AdditionalSavegameSlots = GetAllPossibleSavegameFolders().Select(f => new AdditionalSavegameSlots
             {
                 GameVersionName = f,
                 ContinueSavegameSlot = 0,
@@ -153,6 +236,7 @@ namespace Ambermoon
             }).ToArray();
 
             // Copy old savegame names to new format
+            // Note: The amount of version slots is now dynamic but this upgrade is for older configs where it was fixed. So this is ok.
             if (AdditionalSavegameNames != null && GameVersionIndex >= 0 && GameVersionIndex < 3)
             {
                 // "external" moved from slot 2 to 4
@@ -168,42 +252,33 @@ namespace Ambermoon
             ContinueSavegameSlot = null;
         }
 
-        public AdditionalSavegameSlots GetOrCreateCurrentAdditionalSavegameSlots()
+        public AdditionalSavegameSlots GetOrCreateCurrentAdditionalSavegameSlots(string gameVersionName)
         {
-            if (GameVersionIndex < 0 || GameVersionIndex >= VersionSavegameFolders.Length)
-#if DEBUG
-                GameVersionIndex = VersionSavegameFolders.Length - 1; // external
-#else
-                GameVersionIndex = 0;
-#endif
-
             if (AdditionalSavegameSlots == null)
                 UpgradeAdditionalSavegameSlots();
-            else if (GameVersionIndex >= AdditionalSavegameSlots.Length)
+
+            gameVersionName = gameVersionName.ToLower();
+
+            var savegameSlots = AdditionalSavegameSlots.FirstOrDefault(s => s.GameVersionName.ToLower() == gameVersionName);
+
+            if (savegameSlots == null)
             {
-                var versionSlots = new AdditionalSavegameSlots[VersionSavegameFolders.Length];
-
-                Array.Copy(AdditionalSavegameSlots, versionSlots, AdditionalSavegameSlots.Length);
-
-                for (int i = AdditionalSavegameSlots.Length; i < VersionSavegameFolders.Length; ++i)
+                savegameSlots = new AdditionalSavegameSlots
                 {
-                    versionSlots[i] = new AdditionalSavegameSlots
-                    {
-                        GameVersionName = VersionSavegameFolders[i],
-                        ContinueSavegameSlot = 0,
-                        Names = new string[Game.NumAdditionalSavegameSlots]
-                    };
-                }
+                    GameVersionName = gameVersionName,
+                    ContinueSavegameSlot = 0,
+                    Names = new string[Game.NumAdditionalSavegameSlots]
+                };
 
-                AdditionalSavegameSlots = versionSlots;
+                AdditionalSavegameSlots = Enumerable.Concat(AdditionalSavegameSlots, new[] { savegameSlots }).ToArray();
             }
 
-            return AdditionalSavegameSlots[GameVersionIndex];
+            return savegameSlots;
         }
 #pragma warning restore CS0618
 
         public static readonly string FallbackConfigDirectory =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Ambermoon");
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Ambermoon.net");
 
         private static string bundleDirectory = null;
         /// <summary>
@@ -225,8 +300,8 @@ namespace Ambermoon
                 if (!OperatingSystem.IsMacOS())
                     return bundleDirectory;
 
-                if (OperatingSystem.IsMacOSVersionAtLeast(13) || new DirectoryInfo(bundleDirectory).Attributes.HasFlag(FileAttributes.ReadOnly))
-                    bundleDirectory = FallbackConfigDirectory;
+                if (OperatingSystem.IsMacOSVersionAtLeast(12) || new DirectoryInfo(bundleDirectory).Attributes.HasFlag(FileAttributes.ReadOnly))
+                    bundleDirectory = "~/Library/Application Support/Ambermoon.net";
 
                 return bundleDirectory;
             }
@@ -345,15 +420,13 @@ namespace Ambermoon
                 configuration = defaultValue ?? new Configuration();
                 configuration.FirstStart = false;
 
-                // Ticks of last saving, version index
-                Tuple<long, int> mostRecentSavegameSlot = Tuple.Create(0L, -1);
-
                 try
                 {
-                    var savegameSlots = configuration.AdditionalSavegameSlots = new AdditionalSavegameSlots[VersionSavegameFolders.Length];
+                    var versionSavegameFolders = GetAllPossibleSavegameFolders().ToArray();
+                    var savegameSlots = configuration.AdditionalSavegameSlots = new AdditionalSavegameSlots[versionSavegameFolders.Length];
                     int versionIndex = 0;
 
-                    foreach (var savegameFolder in VersionSavegameFolders)
+                    foreach (var savegameFolder in versionSavegameFolders)
                     {
                         // Ticks of last saving, slot index (1 .. 30)
                         Tuple<long, int> mostRecentSavegameSlotOfVersion = Tuple.Create(0L, -1);
@@ -393,9 +466,6 @@ namespace Ambermoon
                                         {
                                             long lastWriteTicks = Math.Max(saveFolder.LastWriteTime.Ticks, GetLastWriteTicksOfSaveFiles(saveFolder));
 
-                                            if (lastWriteTicks > mostRecentSavegameSlot.Item1)
-                                                mostRecentSavegameSlot = Tuple.Create(lastWriteTicks, versionIndex);
-
                                             if (lastWriteTicks > mostRecentSavegameSlotOfVersion.Item1)
                                                 mostRecentSavegameSlotOfVersion = Tuple.Create(lastWriteTicks, index);
                                         }
@@ -408,8 +478,6 @@ namespace Ambermoon
 
                         ++versionIndex;
                     }
-
-                    configuration.GameVersionIndex = Math.Max(0, mostRecentSavegameSlot.Item2);
                 }
                 catch
                 {
@@ -433,7 +501,15 @@ namespace Ambermoon
             }
 
             configuration.FastBattleMode = null;
+
+            if (configuration.ShowThalionLogo == true && !configuration.ShowFantasyIntro)
+                configuration.ShowFantasyIntro = true;
+
+            configuration.ShowThalionLogo = null;
 #pragma warning restore CS0618
+
+            if (configuration.ShowFog && (!configuration.ShowFloor || !configuration.ShowCeiling))
+                configuration.ShowFog = false;
 
             return configuration;
         }
@@ -441,8 +517,13 @@ namespace Ambermoon
         public void Save(string filename)
         {
 #pragma warning disable CS0618
-            UseGraphicFilter = null; // not used anymore
-            FastBattleMode = null; // not used anymore
+            // not used anymore
+            UseGraphicFilter = null;
+            FastBattleMode = null;
+            CacheMusic = null;
+            ShowThalionLogo = null;
+            AdditionalSavegameNames = null;
+            ContinueSavegameSlot = null;
 #pragma warning restore CS0618
 
             Directory.CreateDirectory(Path.GetDirectoryName(filename));

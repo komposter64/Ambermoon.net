@@ -32,8 +32,6 @@ using TextColor = Ambermoon.Data.Enumerations.Color;
 using InteractionType = Ambermoon.Data.ConversationEvent.InteractionType;
 using Ambermoon.Data.Audio;
 using static Ambermoon.UI.BuiltinTooltips;
-using System.Security;
-using System.IO;
 
 namespace Ambermoon
 {
@@ -126,7 +124,8 @@ namespace Ambermoon
                     4,  // Swim
                     10, // Witch broom
                     8,  // Sand lizard
-                    8   // Sand ship
+                    8,  // Sand ship
+                    15, // Wasp
                 };
                 MoveSpeed3D = GetMoveSpeed3D(legacyMode);
                 TurnSpeed3D = GetTurnSpeed3D(legacyMode);
@@ -241,6 +240,7 @@ namespace Ambermoon
         readonly Random random = new Random();
         bool disableMusicChange = false;
         bool disableTimeEvents = false;
+        readonly string gameVersionName;
         public Features Features { get; }
         public const int NumAdditionalSavegameSlots = 20;
         internal SavegameTime GameTime { get; private set; } = null;
@@ -289,6 +289,7 @@ namespace Ambermoon
         internal bool GameOverButtonsVisible { get; private set; } = false;
         internal bool WindowActive => currentWindow.Window != Window.MapView;
         internal bool PopupActive => layout?.PopupActive ?? false;
+        public bool WindowOrPopupActive => WindowActive || PopupActive;
         static readonly WindowInfo DefaultWindow = new WindowInfo { Window = Window.MapView };
         WindowInfo currentWindow = DefaultWindow;
         internal WindowInfo LastWindow { get; private set; } = DefaultWindow;
@@ -301,6 +302,7 @@ namespace Ambermoon
         internal uint CurrentTicks { get; private set; } = 0;
         internal uint CurrentMapTicks { get; private set; } = 0;
         internal uint CurrentBattleTicks { get; private set; } = 0;
+        internal uint CurrentNormalizedBattleTicks { get; private set; } = 0;
         internal uint CurrentPopupTicks { get; private set; } = 0;
         internal uint CurrentAnimationTicks { get; private set; } = 0;
         uint lastMapTicksReset = 0;
@@ -331,6 +333,7 @@ namespace Ambermoon
         readonly ISavegameSerializer savegameSerializer;
         Player player;
         internal IRenderPlayer RenderPlayer => is3D ? (IRenderPlayer)player3D : player2D;
+        internal Layout Layout => layout;
         public PartyMember CurrentPartyMember { get; private set; } = null;
         bool pickingNewLeader = false;
         bool pickingTargetPlayer = false;
@@ -491,6 +494,7 @@ namespace Ambermoon
         internal byte PrimaryUIPaletteIndex { get; }
         internal byte SecondaryUIPaletteIndex { get; }
         internal byte AutomapPaletteIndex { get; }
+        internal byte CustomGraphicPaletteIndex => (byte)(PrimaryUIPaletteIndex + 3);
         /// <summary>
         /// Open chest which can be used to store items.
         /// </summary>
@@ -549,14 +553,14 @@ namespace Ambermoon
         internal void RequestFullscreenChange(bool fullscreen) => fullscreenChangeHandler?.Invoke(fullscreen);
         internal void NotifyResolutionChange(int? oldWidth) => resolutionChangeHandler?.Invoke(oldWidth);
 
-        public Game(IConfiguration configuration, GameLanguage gameLanguage, IRenderView renderView, IMapManager mapManager,
-            IItemManager itemManager, ICharacterManager characterManager, ISavegameManager savegameManager,
-            ISavegameSerializer savegameSerializer, IDataNameProvider dataNameProvider, TextDictionary textDictionary,
-            Places places, Cursor cursor, ILightEffectProvider lightEffectProvider, IAudioOutput audioOutput, ISongManager songManager,
-            FullscreenChangeHandler fullscreenChangeHandler, ResolutionChangeHandler resolutionChangeHandler,
-            Func<List<Key>> pressedKeyProvider, IOutroFactory outroFactory, Features features)
+        public Game(IConfiguration configuration, GameLanguage gameLanguage, IRenderView renderView, IGraphicProvider graphicProvider,
+            ISavegameManager savegameManager, ISavegameSerializer savegameSerializer, TextDictionary textDictionary,
+            Cursor cursor, IAudioOutput audioOutput, ISongManager songManager, FullscreenChangeHandler fullscreenChangeHandler,
+            ResolutionChangeHandler resolutionChangeHandler, Func<List<Key>> pressedKeyProvider, IOutroFactory outroFactory,
+            Features features, string gameVersionName)
         {
             Features = features;
+            this.gameVersionName = gameVersionName;
             Character.FoodWeight = Features.HasFlag(Features.ReducedFoodWeight) ? 25u : 250u;
             currentUIPaletteIndex = PrimaryUIPaletteIndex = (byte)(renderView.GraphicProvider.PrimaryUIPaletteIndex - 1);
             SecondaryUIPaletteIndex = (byte)(renderView.GraphicProvider.SecondaryUIPaletteIndex - 1);
@@ -573,23 +577,25 @@ namespace Ambermoon
             this.renderView = renderView;
             AudioOutput = audioOutput;
             this.songManager = songManager;
-            MapManager = mapManager;
-            ItemManager = itemManager;
-            CharacterManager = characterManager;
+            MapManager = renderView.GameData.MapManager;
+            ItemManager = renderView.GameData.ItemManager;
+            CharacterManager = renderView.GameData.CharacterManager;
             SavegameManager = savegameManager;
-            this.places = places;
+            layout = new Layout(this, renderView, ItemManager);
+            layout.BattleFieldSlotClicked += BattleFieldSlotClicked;
+            places = renderView.GameData.Places;
             this.savegameSerializer = savegameSerializer;
-            DataNameProvider = dataNameProvider;
+            DataNameProvider = renderView.GameData.DataNameProvider;
             this.textDictionary = textDictionary;
-            this.lightEffectProvider = lightEffectProvider;
+            this.lightEffectProvider = renderView.GameData.LightEffectProvider;
             this.outroFactory = outroFactory;
             camera3D = renderView.Camera3D;
-            windowTitle = renderView.RenderTextFactory.Create(renderView.GetLayer(Layer.Text),
+            windowTitle = renderView.RenderTextFactory.Create(
+                (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1),
+                renderView.GetLayer(Layer.Text),
                 renderView.TextProcessor.CreateText(""), TextColor.BrightGray, true,
-                new Rect(8, 40, 192, 10), TextAlign.Center);
+                layout.GetTextRect(8, 40, 192, 10), TextAlign.Center);
             windowTitle.DisplayLayer = 2;
-            layout = new Layout(this, renderView, itemManager);
-            layout.BattleFieldSlotClicked += BattleFieldSlotClicked;
             fow2D = renderView.FowFactory.Create(Global.Map2DViewWidth, Global.Map2DViewHeight,
                 new Position(Global.Map2DViewX + Global.Map2DViewWidth / 2, Global.Map2DViewY + Global.Map2DViewHeight / 2), 255);
             fow2D.BaseLineOffset = FowBaseLine;
@@ -616,7 +622,7 @@ namespace Ambermoon
                 hurtPlayerSprites[i].PaletteIndex = PrimaryUIPaletteIndex;
                 hurtPlayerSprites[i].TextureAtlasOffset = TextureAtlasManager.Instance.GetOrCreate(Layer.UI).GetOffset(Graphics.GetUIGraphicIndex(UIGraphic.DamageSplash));
                 hurtPlayerSprites[i].Visible = false;
-                hurtPlayerDamageTexts[i] = renderView.RenderTextFactory.Create();
+                hurtPlayerDamageTexts[i] = renderView.RenderTextFactory.Create((byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1));
                 hurtPlayerDamageTexts[i].Layer = renderView.GetLayer(Layer.Text);
                 hurtPlayerDamageTexts[i].DisplayLayer = 201;
                 hurtPlayerDamageTexts[i].TextAlign = TextAlign.Center;
@@ -923,6 +929,7 @@ namespace Ambermoon
                     {
                         double timeFactor = BattleTimeFactor;
                         CurrentBattleTicks = UpdateTicks(CurrentBattleTicks, deltaTime * timeFactor);
+                        CurrentNormalizedBattleTicks = UpdateTicks(CurrentNormalizedBattleTicks, deltaTime);
                         UpdateBattle(1.0 / timeFactor);
 
                         // Note: The null check for currentBattle is important here even if checking above.
@@ -956,6 +963,7 @@ namespace Ambermoon
                 else
                 {
                     CurrentBattleTicks = 0;
+                    CurrentNormalizedBattleTicks = 0;
                 }
 
                 if (!WindowActive && layout.ButtonGridPage == 0)
@@ -1020,7 +1028,10 @@ namespace Ambermoon
         internal void NotifyConfigurationChange(bool windowChange)
         {
             if (is3D)
+            {
                 renderMap3D?.UpdateFloorAndCeilingVisibility(Configuration.ShowFloor, Configuration.ShowCeiling);
+                renderMap3D?.SetFog(Map, MapManager.GetLabdataForMap(Map));
+            }
 
             ConfigurationChanged?.Invoke(Configuration, windowChange);
 
@@ -1170,6 +1181,8 @@ namespace Ambermoon
             );
         }
 
+        public Render.Color GetPrimaryUIColor(int colorIndex) => GetPaletteColor(renderView.GraphicProvider.PrimaryUIPaletteIndex, colorIndex);
+
         public Render.Color GetUIColor(int colorIndex) => GetPaletteColor(1 + UIPaletteIndex, colorIndex);
 
         internal void Start2D(Map map, uint playerX, uint playerY, CharacterDirection direction, bool initial, Action<Map> mapInitAction = null)
@@ -1233,6 +1246,7 @@ namespace Ambermoon
             renderMap2D.CheckIfMonstersSeePlayer();
 
             renderView.GetLayer(Layer.Map3DBackground).Visible = false;
+            renderView.GetLayer(Layer.Map3DBackgroundFog).Visible = false;
             renderView.GetLayer(Layer.Map3DCeiling).Visible = false;
             renderView.GetLayer(Layer.Map3D).Visible = false;
             renderView.GetLayer(Layer.Billboards3D).Visible = false;
@@ -1266,6 +1280,7 @@ namespace Ambermoon
             player.Direction = direction;
 
             renderView.GetLayer(Layer.Map3DBackground).Visible = true;
+            renderView.GetLayer(Layer.Map3DBackgroundFog).Visible = true;
             renderView.GetLayer(Layer.Map3DCeiling).Visible = true;
             renderView.GetLayer(Layer.Map3D).Visible = true;
             renderView.GetLayer(Layer.Billboards3D).Visible = true;
@@ -1414,7 +1429,7 @@ namespace Ambermoon
             partyMember.HitPoints.BonusValue = 0;
             partyMember.SpellPoints.BonusValue = 0;
             partyMember.BaseDefense = 0;
-            partyMember.BaseAttack = 0;
+            partyMember.BaseAttackDamage = 0;
 
             foreach (var attribute in Enum.GetValues<Attribute>())
             {
@@ -1436,7 +1451,7 @@ namespace Ambermoon
                     partyMember.HitPoints.BonusValue += factor * item.HitPoints;
                     partyMember.SpellPoints.BonusValue += factor * item.SpellPoints;
                     partyMember.BaseDefense = (short)(partyMember.BaseDefense + factor * item.Defense);
-                    partyMember.BaseAttack = (short)(partyMember.BaseAttack + factor * item.Damage);
+                    partyMember.BaseAttackDamage = (short)(partyMember.BaseAttackDamage + factor * item.Damage);
 
                     if (item.Attribute != null)
                         partyMember.Attributes[item.Attribute.Value].BonusValue += factor * item.AttributeValue;
@@ -1444,6 +1459,51 @@ namespace Ambermoon
                         partyMember.Skills[item.Skill.Value].BonusValue += factor * item.SkillValue;
                 }
             }
+        }
+
+        /// <summary>
+        /// Is used for external cheats.
+        /// </summary>
+        /// <param name="partyMember">The party member to add</param>
+        /// <returns>0: Success, -1: Wrong window, -2: No free slot</returns>
+        public int AddPartyMember(PartyMember partyMember)
+        {
+            if (CurrentWindow.Window != Window.MapView || WindowActive)
+            {
+                return -1; // Wrong window
+            }
+
+            for (int i = 0; i < MaxPartyMembers; ++i)
+            {
+                if (GetPartyMember(i) == null)
+                {
+                    CurrentSavegame.CurrentPartyMemberIndices[i] =
+                        CurrentSavegame.PartyMembers.FirstOrDefault(p => p.Value == partyMember).Key;
+                    this.AddPartyMember(i, partyMember, null, true);
+                    // Set battle position
+                    CurrentSavegame.BattlePositions[i] = 0xff;
+                    var usePositions = CurrentSavegame.BattlePositions.ToList();
+                    for (int p = 11; p >= 0; --p)
+                    {
+                        if (!usePositions.Contains((byte)p))
+                        {
+                            CurrentSavegame.BattlePositions[i] = (byte)p;
+                            break;
+                        }
+                    }
+                    ushort characterBit;
+                    if (IsMapCharacterActive(PartyMemberInitialCharacterBits[partyMember.Index]))
+                        characterBit = PartyMemberInitialCharacterBits[partyMember.Index];
+                    else
+                        characterBit = PartyMemberCharacterBits[partyMember.Index];
+                    SetMapCharacterBit(characterBit, true);
+                    if (partyMember.CharacterBitIndex == 0xffff || partyMember.CharacterBitIndex == 0x0000)
+                        partyMember.CharacterBitIndex = characterBit;
+                    break;
+                }
+            }
+
+            return -2; // No free slot
         }
 
         void AddPartyMember(int slot, PartyMember partyMember, Action followAction = null, bool forceAnimation = false)
@@ -1482,7 +1542,7 @@ namespace Ambermoon
             return null;
         }
 
-        private void UpdateOutdoorLight(uint minutesPassed)
+        private void UpdateOutdoorLight(uint minutesPassed, bool lightOff)
         {
             bool lightBuffBurningOut = false;
 
@@ -1513,6 +1573,9 @@ namespace Ambermoon
                 lightIntensity = newExpectedLightIntensity;
 
             UpdateLight(false, false, false, null, lightBuffBurningOut ? lightIntensity : (uint?)null);
+
+            if (lightOff)
+                renderMap3D?.SetFog(Map, MapManager.GetLabdataForMap(Map), lightOff);
         }
 
         public void Start(Savegame savegame, Action postAction = null)
@@ -1571,7 +1634,10 @@ namespace Ambermoon
                 else if (Map.Flags.HasFlag(MapFlags.Outdoor))
                 {
                     if (this.is3D)
-                        UpdateOutdoorLight(amount);
+                    {
+                        bool lightOff = CurrentSavegame.IsSpellActive(ActiveSpellType.Light) && CurrentSavegame.GetActiveSpellDuration(ActiveSpellType.Light) * 5 < amount;
+                        UpdateOutdoorLight(amount, lightOff);
+                    }
                     else if (GameTime.Minute % 60 == 0 || amount > GameTime.Minute % 60) // hour changed
                         UpdateLight();
                 }
@@ -2121,7 +2187,7 @@ namespace Ambermoon
 
                 if (Configuration.AdditionalSavegameSlots != null)
                 {
-                    var additionalSavegameSlots = Configuration.GetOrCreateCurrentAdditionalSavegameSlots();
+                    var additionalSavegameSlots = GetAdditionalSavegameSlots();
                     additionalSavegameSlots.ContinueSavegameSlot = slot;
                 }
             }
@@ -2207,6 +2273,8 @@ namespace Ambermoon
             }
         }
 
+        internal AdditionalSavegameSlots GetAdditionalSavegameSlots() => Configuration.GetOrCreateCurrentAdditionalSavegameSlots(gameVersionName);
+
         public void SaveCrashedGame()
         {
             PrepareSaving(() => SavegameManager.SaveCrashedGame(savegameSerializer, CurrentSavegame));
@@ -2220,7 +2288,7 @@ namespace Ambermoon
 
                 if (Configuration.ExtendedSavegameSlots) // extended slots
                 {
-                    var additionalSavegameSlots = Configuration.GetOrCreateCurrentAdditionalSavegameSlots();
+                    var additionalSavegameSlots = GetAdditionalSavegameSlots();
 
                     if (additionalSavegameSlots.Names == null)
                         additionalSavegameSlots.Names = new string[NumAdditionalSavegameSlots];
@@ -2265,7 +2333,7 @@ namespace Ambermoon
 
             void Continue()
             {
-                int current = Configuration.ExtendedSavegameSlots ? Configuration.GetOrCreateCurrentAdditionalSavegameSlots()?.ContinueSavegameSlot ?? 0 : 0;
+                int current = Configuration.ExtendedSavegameSlots ? GetAdditionalSavegameSlots()?.ContinueSavegameSlot ?? 0 : 0;
 
                 if (current <= 0)
                     SavegameManager.GetSavegameNames(renderView.GameData, out current, 10);
@@ -2412,8 +2480,8 @@ namespace Ambermoon
 
         public bool CanRevive() => CurrentWindow.Window == Window.Camp;
 
-        // Note: Eagle allows movement even with overweight.
-        bool CanPartyMove() => TravelType == TravelType.Eagle || !PartyMembers.Any(p => !p.CanMove(false));
+        // Note: Eagle and wasp allow movement even with overweight.
+        bool CanPartyMove() => TravelType == TravelType.Eagle || TravelType == TravelType.Wasp || !PartyMembers.Any(p => !p.CanMove(false));
 
         internal void Move(bool fromNumpadButton, float speedFactor3D, params CursorType[] cursorTypes)
         {
@@ -2757,6 +2825,7 @@ namespace Ambermoon
         {
             pickingTargetPlayer = false;
             TargetPlayerPicked?.Invoke(-1);
+            ClosePopup();
         }
 
         internal bool FinishPickingTargetInventory(int characterSlot)
@@ -2787,6 +2856,7 @@ namespace Ambermoon
                     CloseWindow();
 
                 layout.ShowChestMessage(null);
+                ClosePopup();
                 UntrapMouse();
             }
         }
@@ -2803,6 +2873,7 @@ namespace Ambermoon
                         CloseWindow();
 
                     layout.ShowChestMessage(null);
+                    ClosePopup();
                     EndSequence();
                     UntrapMouse();
                 }
@@ -2811,6 +2882,10 @@ namespace Ambermoon
 
         public void OnKeyDown(Key key, KeyModifiers modifiers)
         {
+#if DEBUG
+            if (key == Key.F5 && modifiers == KeyModifiers.Control)
+                System.Diagnostics.Debugger.Break();
+#endif
             if (characterCreator != null)
             {
                 characterCreator.OnKeyDown(key, modifiers);
@@ -3014,7 +3089,9 @@ namespace Ambermoon
                     break;
                 }
                 default:
-                    if (currentWindow.Window == Window.Automap && key == Key.Space)
+                    if (InputEnable && is3D && currentWindow.Window == Window.MapView && key == Key.Space)
+                        TriggerMapEvents(null);
+                    else if (currentWindow.Window == Window.Automap && (key == Key.Space || key == Key.M))
                     {
                         nextClickHandler?.Invoke(MouseButtons.Right);
                         nextClickHandler = null;
@@ -3129,7 +3206,11 @@ namespace Ambermoon
                     schnism = "";
                     ShowMessagePopup(DataNameProvider.TurnOnTuneInAndDropOut, () =>
                         DamageAllPartyMembers(p => 0u, p => p.Alive, null, null, Condition.Drugged));
+                    return;
                 }
+
+                if (char.ToLower(keyChar) == 'm' && ingame && is3D)
+                    ShowAutomap();
             }
         }
 
@@ -3209,6 +3290,14 @@ namespace Ambermoon
             }
 
             lastMousePosition = new Position(position);
+
+            // Special case to abort multiple monster start animations in battle
+            if (ingame && allInputDisabled && !pickingNewLeader && currentWindow.Window == Window.Battle &&
+                currentBattle.StartAnimationPlaying && currentBattle.WaitForClick)
+            {
+                currentBattle.Click(CurrentBattleTicks);
+                return;
+            }
 
             if (allInputDisabled)
                 return;
@@ -3329,7 +3418,7 @@ namespace Ambermoon
                 {
                     if (!pickingNewLeader && currentWindow.Window == Window.Battle)
                     {
-                        if (currentBattle?.WaitForClick == true)
+                        if (currentBattle.WaitForClick)
                         {
                             CursorType = CursorType.Sword;
                             currentBattle.Click(CurrentBattleTicks);
@@ -3957,6 +4046,7 @@ namespace Ambermoon
                 if (show)
                     layout.SetLayout(LayoutType.Map3D, movement.MovementTicks(true, false, TravelType.Walk));
                 renderView.GetLayer(Layer.Map3DBackground).Visible = show;
+                renderView.GetLayer(Layer.Map3DBackgroundFog).Visible = show;
                 renderView.GetLayer(Layer.Map3DCeiling).Visible = show;
                 renderView.GetLayer(Layer.Map3D).Visible = show;
                 renderView.GetLayer(Layer.Billboards3D).Visible = show;
@@ -4382,7 +4472,7 @@ namespace Ambermoon
 
                 void AddTooltip(Rect area, string tooltip)
                 {
-                    layout.AddTooltip(area, tooltip, TextColor.White, TextAlign.Left, new Render.Color(GetPaletteColor(50, 15), 0xb0));
+                    layout.AddTooltip(area, tooltip, TextColor.White, TextAlign.Left, new Render.Color(GetPrimaryUIColor(15), 0xb0));
                 }
 
                 #region Character info
@@ -4513,7 +4603,7 @@ namespace Ambermoon
             if (character is PartyMember partyMember && Configuration.ShowPlayerStatsTooltips)
             {
                 var tooltip = GetSecondaryStatTooltip(Features, GameLanguage, secondaryStat, partyMember);
-                return layout.AddTooltip(area, tooltip, TextColor.White, TextAlign.Left, new Render.Color(GetPaletteColor(50, 15), 0xb0));
+                return layout.AddTooltip(area, tooltip, TextColor.White, TextAlign.Left, new Render.Color(GetPrimaryUIColor(15), 0xb0));
             }
 
             return null;
@@ -4568,7 +4658,7 @@ namespace Ambermoon
             characterInfoPanels.Clear();
             characterInfoStatTooltips.Clear();
             layout.FillArea(new Rect(208, offsetY + 49, 96, 80), GetUIColor(28), false);
-            layout.AddSprite(new Rect(208, offsetY + 49, 32, 34), Graphics.UICustomGraphicOffset + (uint)UICustomGraphic.PortraitBackground, 52, 1);
+            layout.AddSprite(new Rect(208, offsetY + 49, 32, 34), Graphics.UICustomGraphicOffset + (uint)UICustomGraphic.PortraitBackground, CustomGraphicPaletteIndex, 1);
             layout.AddSprite(new Rect(208, offsetY + 49, 32, 34), Graphics.PortraitOffset + character.PortraitIndex - 1, PrimaryUIPaletteIndex, 2);
             if (!string.IsNullOrEmpty(DataNameProvider.GetRaceName(character.Race)))
                 layout.AddText(new Rect(242, offsetY + 49, 62, 7), DataNameProvider.GetRaceName(character.Race));
@@ -4630,7 +4720,7 @@ namespace Ambermoon
                 SetupSecondaryStatTooltip(new Rect(214, 113, 42, 7), SecondaryStat.Gold);
                 SetupSecondaryStatTooltip(new Rect(262, 113, 36, 7), SecondaryStat.Food);
                 layout.AddSprite(new Rect(214, 120, 16, 9), Graphics.GetUIGraphicIndex(UIGraphic.Attack), UIPaletteIndex);
-                int attack = AdjustAttackForNotUsedAmmunition(character, character.BaseAttack) + (int)character.Attributes[Attribute.Strength].TotalCurrentValue / 25;
+                int attack = AdjustAttackForNotUsedAmmunition(character, character.BaseAttackDamage) + (int)character.Attributes[Attribute.Strength].TotalCurrentValue / 25;
                 if (CurrentSavegame.IsSpellActive(ActiveSpellType.Attack))
                 {
                     if (attack > 0)
@@ -4743,7 +4833,7 @@ namespace Ambermoon
                 string.Format(DataNameProvider.CharacterInfoGoldAndFoodString, character.Gold, character.Food));
             UpdateSecondaryStatTooltip(SecondaryStat.Gold);
             UpdateSecondaryStatTooltip(SecondaryStat.Food);
-            int attack = AdjustAttackForNotUsedAmmunition(character, character.BaseAttack) + (int)character.Attributes[Attribute.Strength].TotalCurrentValue / 25;
+            int attack = AdjustAttackForNotUsedAmmunition(character, character.BaseAttackDamage) + (int)character.Attributes[Attribute.Strength].TotalCurrentValue / 25;
             if (CurrentSavegame.IsSpellActive(ActiveSpellType.Attack))
             {
                 if (attack > 0)
@@ -4855,7 +4945,7 @@ namespace Ambermoon
 
             // Note: amount is only used for ammunition. The weight is
             // influenced by the amount but not the damage/defense etc.
-            character.BaseAttack = (short)(character.BaseAttack + (cursed ? -1 : 1) * item.Damage);
+            character.BaseAttackDamage = (short)(character.BaseAttackDamage + (cursed ? -1 : 1) * item.Damage);
             character.BaseDefense = (short)(character.BaseDefense + (cursed ? -1 : 1) * item.Defense);
             character.MagicAttack = (short)(character.MagicAttack + item.MagicAttackLevel);
             character.MagicDefense = (short)(character.MagicDefense + item.MagicArmorLevel);
@@ -4888,7 +4978,7 @@ namespace Ambermoon
         {
             // Note: amount is only used for ammunition. The weight is
             // influenced by the amount but not the damage/defense etc.
-            character.BaseAttack = (short)(character.BaseAttack - (cursed ? -1 : 1) * item.Damage);
+            character.BaseAttackDamage = (short)(character.BaseAttackDamage - (cursed ? -1 : 1) * item.Damage);
             character.BaseDefense = (short)(character.BaseDefense - (cursed ? -1 : 1) * item.Defense);
             character.MagicAttack = (short)(character.MagicAttack - item.MagicAttackLevel);
             character.MagicDefense = (short)(character.MagicDefense - item.MagicArmorLevel);
@@ -5478,10 +5568,10 @@ namespace Ambermoon
                     switch (rewardEvent.Operation)
                     {
                         case RewardEvent.RewardOperation.Increase:
-                            partyMember.BaseAttack = (short)Util.Min(short.MaxValue, partyMember.BaseAttack + RandomizeIfNecessary(rewardEvent.Value));
+                            partyMember.BaseAttackDamage = (short)Util.Min(short.MaxValue, partyMember.BaseAttackDamage + RandomizeIfNecessary(rewardEvent.Value));
                             break;
                         case RewardEvent.RewardOperation.Decrease:
-                            partyMember.BaseAttack = (short)Util.Max(0, (int)partyMember.BaseAttack - (int)RandomizeIfNecessary(rewardEvent.Value));
+                            partyMember.BaseAttackDamage = (short)Util.Max(0, (int)partyMember.BaseAttackDamage - (int)RandomizeIfNecessary(rewardEvent.Value));
                             break;
                     }
                     break;
@@ -5701,10 +5791,10 @@ namespace Ambermoon
                 return;
             }
 
-            var sourceY = !mapChange ? camera3D.Y : (up ? renderMap3D.GetFloorY() : renderMap3D.GetLevitatingY());
+            var sourceY = !mapChange ? camera3D.Y : (up ? RenderMap3D.GetFloorY() : RenderMap3D.GetLevitatingY());
             player3D.SetY(sourceY);
-            var targetY = mapChange ? camera3D.GroundY : (up ? renderMap3D.GetLevitatingY() : renderMap3D.GetFloorY());
-            float stepSize = renderMap3D.GetLevitatingStepSize();
+            var targetY = mapChange ? camera3D.GroundY : (up ? RenderMap3D.GetLevitatingY() : RenderMap3D.GetFloorY());
+            float stepSize = RenderMap3D.GetLevitatingStepSize();
             float dist = Math.Abs(targetY - camera3D.Y);
             int steps = Math.Max(1, Util.Round(dist / stepSize));
 
@@ -6626,6 +6716,22 @@ namespace Ambermoon
             }
         }
 
+        internal void SetMapCharacterBit(uint characterBit, bool bit)
+        {
+            var mapIndex = 1 + characterBit / 32;
+            var characterIndex = characterBit % 32;
+
+            SetMapCharacterBit(mapIndex, characterIndex, bit);
+        }
+
+        private bool IsMapCharacterActive(uint characterBit)
+        {
+            var mapIndex = 1 + characterBit / 32;
+            var characterIndex = characterBit % 32;
+
+            return !CurrentSavegame.GetCharacterBit(mapIndex, characterIndex);
+        }
+
         internal void ChestClosed()
         {
             // This is called by manually close the chest window via the Exit button
@@ -6651,10 +6757,16 @@ namespace Ambermoon
             {
                 uint chestIndex = chestEvent.RealChestIndex;
 
-                // Refill chest (is important if it is used elsewhere too)
+                // Refill chest (is important if it is used elsewhere too).
+                // Only do this if there is only 1 item, 1 gold or 1 food.
+                // This is used for plants on the forest moon or the
+                // wandering mushrooms in Dor Grestin. Otherwise this should
+                // not be done as it leads to restocking in maps which use
+                // multiple versions like the airship, Kire's residence,
+                // the dwarf test mine or the Tornak cave.
                 var initialChest = GetInitialChest(chestIndex);
 
-                if (initialChest != null)
+                if (initialChest != null && initialChest.Slots.OfType<ItemSlot>().Sum(item => item.Amount) + initialChest.Gold + initialChest.Food == 1)
                 {
                     var chest = GetChest(chestIndex);
 
@@ -7296,21 +7408,59 @@ namespace Ambermoon
             // Tar the dark
             { 7,  0x2141 },
             // Egil
-            { 8, 0x2163 },
+            { 8,  0x2163 },
             // Selena
             { 9,  0x22c2 },
             // Nelvin
-            { 10,  0x2321 },
+            { 10, 0x2321 },
             // Sabine
-            { 11,  0x23a0 },
+            { 11, 0x23a0 },
             // Valdyn
-            { 12,  0x2400 },
+            { 12, 0x2400 },
             // Targor
-            { 13,  0x3320 },
+            { 13, 0x3320 },
             // Leonaria
-            { 14,  0x3440 },
+            { 14, 0x3440 },
             // Gryban
-            { 15,  0x35a0 }
+            { 15, 0x35a0 },
+            // Kasimir
+            { 16, 0x2203 }
+        };
+
+        // Some party members like Sabine appear at some different location first (e.g. Luminor's torture chamber)
+        // and will spawn somewhere else later (Burnville healers). This stores the initial location bit.
+        static readonly Dictionary<uint, ushort> PartyMemberInitialCharacterBits = new Dictionary<uint, ushort>
+        {
+            // Netsrak
+            { 2,  0x2000 },
+            // Mando
+            { 3,  0x2001 },
+            // Erik
+            { 4,  0x2002 },
+            // Chris
+            { 5,  0x2003 },
+            // Monika
+            { 6,  0x2004 },
+            // Tar the dark
+            { 7,  0x2141 },
+            // Egil
+            { 8,  0x2163 },
+            // Selena
+            { 9,  0x22e0 },
+            // Nelvin
+            { 10, 0x2321 },
+            // Sabine
+            { 11, 0x2485 },
+            // Valdyn
+            { 12, 0x24e0 },
+            // Targor
+            { 13, 0x3320 },
+            // Leonaria
+            { 14, 0x3440 },
+            // Gryban
+            { 15, 0x35a0 },
+            // Kasimir
+            { 16, 0x2203 }
         };
 
         /// <summary>
@@ -8200,7 +8350,7 @@ namespace Ambermoon
             }
             else
             {
-                currentBattle.Update(CurrentBattleTicks);
+                currentBattle.Update(CurrentBattleTicks, CurrentNormalizedBattleTicks);
             }
 
             if (highlightBattleFieldSprites.Count != 0)
@@ -8894,6 +9044,18 @@ namespace Ambermoon
             }
         }
 
+        public bool EndBattle(bool flee)
+        {
+            if (currentBattle == null || currentBattle.RoundActive)
+                return false;
+
+            if (PopupActive)
+                ClosePopup();
+
+            currentBattle.EndBattle(flee);
+            return true;
+        }
+
         public Savegame GetCurrentSavegame()
         {
             return CurrentSavegame;
@@ -9208,6 +9370,9 @@ namespace Ambermoon
                     // Do nothing. Can be used by Thief/Ranger but has no effect in Ambermoon.
                     finishAction?.Invoke();
                     break;
+                case Spell.MountWasp:
+                    ShowMessagePopup(DataNameProvider.MountTheWasp, () => CloseWindow(() => ActivateTransport(TravelType.Wasp)), TextAlign.Left);
+                    break;
                 case Spell.CallEagle:
                     ShowMessagePopup(DataNameProvider.BlowsTheFlute, () =>
                     {
@@ -9221,7 +9386,7 @@ namespace Ambermoon
                             var targetPosition = player2D.DisplayArea.Position + new Position(diffX, diffY);
                             var position = new Position(Global.Map2DViewX - (int)travelInfoEagle.Width, targetPosition.Y - (int)travelInfoEagle.Height);
                             var eagle = layout.AddMapCharacterSprite(new Rect(position, new Size((int)travelInfoEagle.Width, (int)travelInfoEagle.Height)),
-                                3 * 17 + (uint)TravelType.Eagle * 4 + 1, ushort.MaxValue);
+                                Graphics.TravelGraphicOffset + (uint)TravelType.Eagle * 4 + 1, ushort.MaxValue);
                             eagle.ClipArea = Map2DViewArea;
                             AddTimedEvent(TimeSpan.FromMilliseconds(200), AnimateEagle);
                             void AnimateEagle()
@@ -9294,7 +9459,7 @@ namespace Ambermoon
 
             void PlayItemMagicAnimation(Action animationFinishAction = null)
             {
-                ItemAnimation.Play(this, renderView, ItemAnimation.Type.Enchant, layout.GetItemSlotPosition(itemSlot),
+                ItemAnimation.Play(this, renderView, ItemAnimation.Type.Enchant, layout.GetItemSlotPosition(itemSlot, true),
                     animationFinishAction ?? finishAction, TimeSpan.FromMilliseconds(50));
             }
 
@@ -10244,7 +10409,7 @@ namespace Ambermoon
             layout.EnableButton(0, battleFieldSlot >= 24 && CurrentPartyMember.CanFlee()); // flee button, only enable in last row
             layout.EnableButton(3, CurrentPartyMember.CanMove()); // Note: If no slot is available the button still is enabled but after clicking you get "You can't move anywhere".
             layout.EnableButton(4, currentBattle.CanPartyMoveForward);
-            layout.EnableButton(6, CurrentPartyMember.BaseAttack > 0 && CurrentPartyMember.Conditions.CanAttack());
+            layout.EnableButton(6, CurrentPartyMember.BaseAttackDamage > 0 && CurrentPartyMember.Conditions.CanAttack());
             layout.EnableButton(7, CurrentPartyMember.Conditions.CanParry());
             layout.EnableButton(8, CurrentPartyMember.Conditions.CanCastSpell() && CurrentPartyMember.HasAnySpell());
         }
@@ -10300,8 +10465,8 @@ namespace Ambermoon
                             {
                                 int blinkCharacterSlot = (int)Battle.GetBlinkCharacterPosition(action.Parameter);
                                 bool selfBlink = currentBattle.GetSlotFromCharacter(CurrentPartyMember) == blinkCharacterSlot;
-                                layout.SetBattleFieldSlotColor(blinkCharacterSlot, selfBlink ? BattleFieldSlotColor.Both : BattleFieldSlotColor.Orange, CurrentBattleTicks);
-                                layout.SetBattleFieldSlotColor((int)Battle.GetTargetTileOrRowFromParameter(action.Parameter), BattleFieldSlotColor.Orange, CurrentBattleTicks + Layout.TicksPerBlink);
+                                layout.SetBattleFieldSlotColor(blinkCharacterSlot, selfBlink ? BattleFieldSlotColor.Both : BattleFieldSlotColor.Orange, CurrentNormalizedBattleTicks);
+                                layout.SetBattleFieldSlotColor((int)Battle.GetTargetTileOrRowFromParameter(action.Parameter), BattleFieldSlotColor.Orange, CurrentNormalizedBattleTicks + Layout.TicksPerBlink);
                                 break;
                             }
                         }
@@ -10350,7 +10515,7 @@ namespace Ambermoon
                         remove = true;
                         break;
                     case Battle.BattleActionType.Attack:
-                        if (partyMember.BaseAttack <= 0 || !partyMember.Conditions.CanAttack())
+                        if (partyMember.BaseAttackDamage <= 0 || !partyMember.Conditions.CanAttack())
                             remove = true;
                         break;
                     case Battle.BattleActionType.Parry:
@@ -10584,8 +10749,8 @@ namespace Ambermoon
                         {
                             int casterSlot = currentBattle.GetSlotFromCharacter(currentPickingActionMember);
                             bool selfBlink = casterSlot == blinkCharacterPosition.Value;
-                            layout.SetBattleFieldSlotColor((int)blinkCharacterPosition.Value, selfBlink ? BattleFieldSlotColor.Both : BattleFieldSlotColor.Orange, CurrentBattleTicks);
-                            layout.SetBattleFieldSlotColor(column, row, BattleFieldSlotColor.Orange, CurrentBattleTicks + Layout.TicksPerBlink);
+                            layout.SetBattleFieldSlotColor((int)blinkCharacterPosition.Value, selfBlink ? BattleFieldSlotColor.Both : BattleFieldSlotColor.Orange, CurrentNormalizedBattleTicks);
+                            layout.SetBattleFieldSlotColor(column, row, BattleFieldSlotColor.Orange, CurrentNormalizedBattleTicks + Layout.TicksPerBlink);
                             if (!selfBlink)
                                 layout.SetBattleFieldSlotColor(casterSlot, BattleFieldSlotColor.Yellow);
                         }
@@ -10712,7 +10877,7 @@ namespace Ambermoon
                 return false;
             }
 
-            if (currentPickingActionMember.BaseAttack <= 0 || !currentPickingActionMember.Conditions.CanAttack())
+            if (currentPickingActionMember.BaseAttackDamage <= 0 || !currentPickingActionMember.Conditions.CanAttack())
             {
                 CancelSpecificPlayerAction();
                 if (!silent)
@@ -11101,6 +11266,7 @@ namespace Ambermoon
                     : lightIntensity;
                 renderMap3D.UpdateSky(lightEffectProvider, GameTime, lightBuffIntensity);
                 renderMap3D.SetColorLightFactor(light3D);
+                renderMap3D?.SetFog(Map, MapManager.GetLabdataForMap(Map));
             }
             else // 2D
             {
@@ -11492,7 +11658,7 @@ namespace Ambermoon
                                     if (scrollIdentification)
                                     {
                                         var item = ItemManager.GetItem(itemSlot.ItemIndex);
-                                        var slp = SpellInfos.Entries[item.Spell].SLP;
+                                        var slp = SpellInfos.GetSLPCost(Features, item.Spell);
                                         Message(DataNameProvider.SageIdentifyScroll + slp.ToString() + DataNameProvider.SageSLP, true);
                                     }
                                     else
@@ -11505,7 +11671,7 @@ namespace Ambermoon
 
                             if (answer)
                             {
-                                ItemAnimation.Play(this, renderView, ItemAnimation.Type.Enchant, layout.GetItemSlotPosition(itemSlot),
+                                ItemAnimation.Play(this, renderView, ItemAnimation.Type.Enchant, layout.GetItemSlotPosition(itemSlot, true),
                                     Finish, TimeSpan.FromMilliseconds(50));
                             }
                             else
@@ -13168,7 +13334,8 @@ namespace Ambermoon
                                     EndSequence();
                                     layout.ShowChestMessage(null);
                                     layout.SetInventoryMessage(null);
-                                 }
+                                    ClosePopup();
+                                }
 
                                 this.TargetItemPicked -= TargetItemPicked;
                                 Consume();
@@ -13185,6 +13352,7 @@ namespace Ambermoon
                         this.TargetItemPicked -= TargetItemPicked;
                         itemGrid?.HideTooltip();
                         layout.SetInventoryMessage(null);
+                        ClosePopup();
                         if (itemSlot != null)
                         {
                             Consume();
@@ -14214,7 +14382,8 @@ namespace Ambermoon
                 {
                     if (!closed)
                     {
-                        positionMarker.TextureAtlasOffset = positionMarkerBaseTextureOffset + new Position(0, positionMarkerFrame * 10);
+                        int textureFactor = (int)(positionMarker.Layer?.TextureFactor ?? 1);
+                        positionMarker.TextureAtlasOffset = positionMarkerBaseTextureOffset + new Position(0, positionMarkerFrame * textureFactor);
                         positionMarkerFrame = (positionMarkerFrame + 1) % 4; // 4 frames in total
                         AddTimedEvent(TimeSpan.FromMilliseconds(75), AnimatePosition);
                     }
@@ -14334,7 +14503,7 @@ namespace Ambermoon
 
         internal void ShowAutomap(AutomapOptions automapOptions, Action finishAction = null)
         {
-            Action create = () =>
+            void Create()
             {
                 Fade(() =>
                 {
@@ -14856,7 +15025,8 @@ namespace Ambermoon
                             }
 
                             var sprite = layout.AddSprite(new Rect(dx, dy, 8, 8), Graphics.GetCustomUIGraphicIndex(UICustomGraphic.AutomapWallFrames), paletteIndex, 2);
-                            sprite.TextureAtlasOffset = new Position(sprite.TextureAtlasOffset.X + wallGraphicType * 8, sprite.TextureAtlasOffset.Y);
+                            int textureFactor = (int)renderView.GetLayer(Layer.UI).TextureFactor;
+                            sprite.TextureAtlasOffset = new Position(sprite.TextureAtlasOffset.X + wallGraphicType * 8 * textureFactor, sprite.TextureAtlasOffset.Y);
                             sprite.ClipArea = Global.AutomapArea;
                             sprites.Add(sprite);
 
@@ -15085,12 +15255,12 @@ namespace Ambermoon
                     TrapMouse(Global.AutomapArea);
                     UpdateCursor();
                 });
-            };
+            }
 
             if (currentWindow.Window == Window.Automap)
-                create?.Invoke();
+                Create();
             else
-                CloseWindow(create);
+                CloseWindow(Create);
         }
 
         internal void ShowRiddlemouth(Map map, RiddlemouthEvent riddlemouthEvent, Action solvedHandler, bool showRiddle = true)
@@ -15243,7 +15413,7 @@ namespace Ambermoon
                 {
                     FrameWidth = (int)travelInfo.Width,
                     FrameHeight = (int)travelInfo.Height,
-                    StandFrameIndex = 3 * 17 + (uint)TravelType * 4,
+                    StandFrameIndex = Graphics.TravelGraphicOffset + (uint)TravelType * 4,
                     SitFrameIndex = 0,
                     SleepFrameIndex = 0,
                     NumStandFrames = 1,
@@ -15505,7 +15675,7 @@ namespace Ambermoon
                     InputEnable = true;
                     bool hasSavegames = SavegameManager.GetSavegameNames(renderView.GameData, out _, 10).Any(n => !string.IsNullOrWhiteSpace(n));
                     if (!hasSavegames)
-                        hasSavegames = Configuration.ExtendedSavegameSlots && Configuration.GetOrCreateCurrentAdditionalSavegameSlots()?.Names?.Any(s => !string.IsNullOrWhiteSpace(s)) == true;
+                        hasSavegames = Configuration.ExtendedSavegameSlots && GetAdditionalSavegameSlots()?.Names?.Any(s => !string.IsNullOrWhiteSpace(s)) == true;
                     layout.AddText(textArea, ProcessText(hasSavegames
                         ? DataNameProvider.GameOverLoadOrQuit
                         : GetCustomText(CustomTexts.Index.StartNewGameOrQuit)),

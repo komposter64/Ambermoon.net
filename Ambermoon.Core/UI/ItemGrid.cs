@@ -898,11 +898,13 @@ namespace Ambermoon.UI
                 var item = itemManager.GetItem(items[slot.Value].Item.ItemIndex);
                 var itemNameText = renderView.TextProcessor.CreateText(item.Name);
                 int textWidth = itemNameText.MaxLineSize * Global.GlyphWidth;
+                int textYOffset = Global.GlyphLineHeight - renderView.FontProvider.GetFont().GlyphHeight;
 
                 if (hoveredItemName == null)
                 {
                     hoveredItemName = renderView.RenderTextFactory.Create
                     (
+                        (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1),
                         renderView.GetLayer(Layer.Text),
                         itemNameText,
                         Data.Enumerations.Color.White, true
@@ -913,7 +915,7 @@ namespace Ambermoon.UI
                 hoveredItemName.DisplayLayer = 10;
                 hoveredItemName.PaletteIndex = game.UIPaletteIndex;
                 hoveredItemName.X = Util.Limit(0, position.X - textWidth / 2, Global.VirtualScreenWidth - textWidth);
-                hoveredItemName.Y = position.Y - Global.GlyphLineHeight - 1;
+                hoveredItemName.Y = position.Y - Global.GlyphLineHeight - 1 + textYOffset;
                 hoveredItemName.Visible = true;
 
                 if (showPrice)
@@ -926,6 +928,7 @@ namespace Ambermoon.UI
                     {
                         hoveredItemPrice = renderView.RenderTextFactory.Create
                         (
+                            (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1),
                             renderView.GetLayer(Layer.Text),
                             itemPriceText,
                             color, true
@@ -940,7 +943,7 @@ namespace Ambermoon.UI
                     hoveredItemPrice.DisplayLayer = 2;
                     hoveredItemPrice.PaletteIndex = hoveredItemName.PaletteIndex;
                     hoveredItemPrice.X = Util.Limit(0, position.X - textWidth / 2, Global.VirtualScreenWidth - textWidth);
-                    hoveredItemPrice.Y = position.Y - 2 * Global.GlyphLineHeight - 1;
+                    hoveredItemPrice.Y = position.Y - 2 * Global.GlyphLineHeight - 1 + textYOffset;
                     hoveredItemPrice.Visible = true;
                 }
 

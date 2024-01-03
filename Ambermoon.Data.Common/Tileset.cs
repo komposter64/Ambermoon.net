@@ -27,7 +27,7 @@ namespace Ambermoon.Data
             AllowMovementWitchBroom = 0x00010000,
             AllowMovementSandLizard = 0x00020000,
             AllowMovementSandShip = 0x00040000,
-            AllowMovementUnused12 = 0x00080000,
+            AllowMovementWasp = 0x00080000,
             AllowMovementUnused13 = 0x00100000,
             AllowMovementUnused14 = 0x00200000,
             AllowMovementUnused15 = 0x00400000,
@@ -105,7 +105,7 @@ namespace Ambermoon.Data
 
                 uint flagValue = (uint)flags;
 
-                tile.AllowedTravelTypes = (ushort)((flagValue >> 8) & 0x7ff);
+                tile.AllowedTravelTypes = (ushort)((flagValue >> 8) & 0xfff);
                 var sitSleepValue = (flagValue >> 23) & 0x07;
                 tile.SitDirection = (sitSleepValue == 0 || sitSleepValue > 4) ? (CharacterDirection?)null : (CharacterDirection)(sitSleepValue - 1);
                 tile.Sleep = sitSleepValue == 5;

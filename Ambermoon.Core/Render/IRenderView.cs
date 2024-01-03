@@ -32,17 +32,20 @@ namespace Ambermoon.Render
         IRenderLayer GetLayer(Layer layer);
         void Resize(int width, int height, int? windowWidth = null, int? windowHeight = null);
         void Close();
+        void UsePalette(Layer layer, bool use);
+        void SetTextureFactor(Layer layer, uint factor);
 
         Position GameToScreen(Position position);
         Position ViewToScreen(Position position);
         Size ViewToScreen(Size size);
         Rect GameToScreen(Rect rect);
         Rect ViewToScreen(Rect rect);
+        Position ScreenToLayer(Position position, Layer layer);
         Position ScreenToGame(Position position);
         Position ScreenToView(Position position);
         Size ScreenToView(Size size);
         Rect ScreenToView(Rect rect);
-        byte[] TakeScreenshot();
+        void TakeScreenshot(Action<byte[]> dataHandler);
 
         Size FramebufferSize { get; }
         Size MaxScreenSize { get; }
@@ -51,6 +54,9 @@ namespace Ambermoon.Render
         bool AllowFramebuffer { get; }
         bool AllowEffects { get; }
 
+        IGameData GameData { get; }
+        IGraphicProvider GraphicProvider { get; }
+        IFontProvider FontProvider { get; }
         ISpriteFactory SpriteFactory { get; }
         IColoredRectFactory ColoredRectFactory { get; }
         ISurface3DFactory Surface3DFactory { get; }
@@ -62,9 +68,9 @@ namespace Ambermoon.Render
         void SetLight(float light);
         void SetSkyColorReplacement(uint? skyColor, Color replaceColor);
         PaletteReplacement PaletteReplacement { get; set; }
+        PaletteReplacement HorizonPaletteReplacement { get; set; }
         int? DrugColorComponent { get; set; }
-
-        IGameData GameData { get; }
-        IGraphicProvider GraphicProvider { get; }
+        PaletteFading PaletteFading { get; set; }
+        void SetFog(Color fogColor, float distance);
     }
 }

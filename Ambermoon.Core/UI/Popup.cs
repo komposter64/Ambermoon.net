@@ -162,7 +162,10 @@ namespace Ambermoon.UI
         public IRenderText AddText(Position position, string text, TextColor textColor, bool shadow = true,
             byte displayLayer = 1, char? fallbackChar = null)
         {
-            var renderText = renderView.RenderTextFactory.Create(renderView.GetLayer(Layer.Text),
+            position = Global.GetTextRect(renderView, new Rect(position, new Size(Global.GlyphWidth, Global.GlyphLineHeight))).Position;
+            var renderText = renderView.RenderTextFactory.Create(
+                (byte)(renderView.GraphicProvider.DefaultTextPaletteIndex - 1), 
+                renderView.GetLayer(Layer.Text),
                 renderView.TextProcessor.CreateText(text, fallbackChar), textColor, shadow);
             renderText.DisplayLayer = (byte)Util.Min(255, this.DisplayLayer + displayLayer);
             renderText.PaletteIndex = game.UIPaletteIndex;
@@ -190,7 +193,7 @@ namespace Ambermoon.UI
                 uiText = layout.CreateScrollableText(bounds, text, textColor, textAlign, displayLayer, shadow, game.TextPaletteIndex);
             else
             {
-                uiText = new UIText(renderView, game.TextPaletteIndex, text, bounds, displayLayer,
+                uiText = new UIText(renderView, game.TextPaletteIndex, text, Global.GetTextRect(renderView, bounds), displayLayer,
                     textColor, shadow, textAlign, scrolling, game.AddTimedEvent);
             }
             texts.Add(uiText);
@@ -322,7 +325,7 @@ namespace Ambermoon.UI
 
             ch = char.ToLower(ch);
 
-            if (ch == 'y' || ch == 'j')
+            if (ch == 'y' || ch == 'j' || ch == 'o')
             {
                 var yesButton = buttons.FirstOrDefault(button => button.ButtonType == Data.Enumerations.ButtonType.Yes);
 

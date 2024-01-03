@@ -38,9 +38,9 @@ namespace Ambermoon
             this.startAlpha = startAlpha;
             this.endAlpha = endAlpha;
             this.baseColor = baseColor ?? Color.Black;
-            coloredRect = renderView.ColoredRectFactory.Create(Global.VirtualScreenWidth, Global.VirtualScreenHeight,
+            coloredRect = renderView.ColoredRectFactory.Create(320, 256,
                 this.baseColor, displayLayer);
-            coloredRect.Layer = renderView.GetLayer(Layer.IntroEffects);
+            coloredRect.Layer = renderView.GetLayer(Layer.MainMenuEffects);
             coloredRect.X = 0;
             coloredRect.Y = 0;
             coloredRect.Visible = initialVisible;
@@ -51,6 +51,12 @@ namespace Ambermoon
         {
             coloredRect?.Delete();
             coloredRect = null;
+        }
+
+        public void SetColor(Color color)
+        {
+            if (coloredRect != null)
+                coloredRect.Color = color;
         }
 
         public void Start(int durationInMs, bool reverse = false)

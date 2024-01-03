@@ -173,16 +173,17 @@ namespace Ambermoon.Render
         {
             var font = fontProvider.GetFont();
 
-            for (uint i = 0; i < 94; ++i)
+            for (uint i = 0; i < font.GlyphCount; ++i)
                 AddTexture(Layer.Text, i, font.GetGlyphGraphic(i));
 
             // Add simple digits for damage display
             for (uint i = 0; i < 10; ++i)
-                AddTexture(Layer.Text, 100 + i, font.GetDigitGlyphGraphic(i));
+                AddTexture(Layer.SmallDigits, i, font.GetDigitGlyphGraphic(i));
         }
 
         public void AddAll(IGameData gameData, IGraphicProvider graphicProvider, IFontProvider fontProvider,
-            Dictionary<uint, Graphic> introTextGlyphs, Dictionary<uint, Graphic> introGraphics)
+            Dictionary<uint, Graphic> introTextGlyphs, Dictionary<uint, Graphic> introLargeTextGlyphs,
+            Dictionary<uint, Graphic> introGraphics, Features features)
         {
             if (gameData == null)
                 throw new ArgumentNullException(nameof(gameData));
@@ -221,8 +222,9 @@ namespace Ambermoon.Render
             // On world maps the travel graphics are used.
             // Only 4 sprites are used (one for each direction).
             var travelGraphics = graphicProvider.GetGraphics(GraphicType.TravelGfx);
+            int count = features.HasFlag(Features.WaspTransport) ? 12 : 11;
 
-            if (travelGraphics.Count != 11 * 4)
+            if (travelGraphics.Count != count * 4)
                 throw new AmbermoonException(ExceptionScope.Data, "Wrong number of travel graphics.");
 
             for (int i = 0; i < travelGraphics.Count; ++i)
@@ -357,13 +359,32 @@ namespace Ambermoon.Render
 
             foreach (var introTextGlyph in introTextGlyphs)
                 AddTexture(Layer.IntroText, introTextGlyph.Key, introTextGlyph.Value);
+            foreach (var introTextGlyph in introLargeTextGlyphs)
+            {
+                AddTexture(Layer.IntroText, introTextGlyph.Key, introTextGlyph.Value);
+                AddTexture(Layer.MainMenuText, introTextGlyph.Key, introTextGlyph.Value);
+            }
 
             #endregion
 
             #region Intro Graphics
 
             foreach (var introGraphic in introGraphics)
-                AddTexture(Layer.IntroGraphics, introGraphic.Key, introGraphic.Value);
+            {
+                switch (introGraphic.Key)
+                {
+                    case (uint)IntroGraphic.MainMenuBackground:
+                    case (uint)IntroGraphic.CloudsLeft:
+                    case (uint)IntroGraphic.CloudsRight:
+                        // We only need the background for the main menu and the clouds from the intro.
+                        // The intro does not need them as they only use the main menu layers.
+                        AddTexture(Layer.MainMenuGraphics, introGraphic.Key, introGraphic.Value);
+                        break;
+                    default:
+                        AddTexture(Layer.IntroGraphics, introGraphic.Key, introGraphic.Value);
+                        break;
+                }
+            }
 
             #endregion
         }

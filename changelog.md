@@ -1,8 +1,23 @@
 # Changelog
 
+## 1.9.0 - Eighth patch (August - December 2023)
 
-## 1.8.0 - Eighth patch (July 2022 - January 2023)
+- Version [1.9.4](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.9.4): Shader quick fix
+- Version [1.9.3](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.9.3): Distance fog, bugfixes
+- Version [1.9.2](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.9.2): Fixed polish version, bugfixes
+- Version [1.9.1](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.9.1): Added the polish version
+- Version [1.9.0](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.9.0): Added the intro
 
+## 1.8.0 - Eighth patch (July 2022 - May 2023)
+
+- Version [1.8.8](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.8): Integrated original game version 1.19
+- Version [1.8.7](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.7): Fixed some crashes, improved handling of the Mac gatekeeper
+- Version [1.8.6](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.6): Advanced start crash fix for 1.8.5 and patcher improvements
+- Version [1.8.5](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.5): Added game data version 1.18, fixed dmg/def calculation
+- Version [1.8.4](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.4): Important savegame bugfix, input crash fix
+- Version [1.8.3](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.3): Bugfixes
+- Version [1.8.2](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.2): Added fantasy intro, french version and language selection
+- Version [1.8.1](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.1): Bugfixes
 - Version [1.8.0](https://github.com/Pyrdacor/Ambermoon.net/releases/tag/v1.8.0): Added Ambermoon Advanced Ep II, many bugfixes
 
 ## 1.7.0 - Seventh patch (June 2022 - July 2022)

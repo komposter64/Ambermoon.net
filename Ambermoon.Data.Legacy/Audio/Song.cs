@@ -29,6 +29,7 @@ namespace Ambermoon.Data.Legacy.Audio
         Stream stream = null;
         int bytesPerSecond = 0;
         TimeSpan? songDuration = null;
+        readonly bool loop = false;
 
         public int SongLength => sonicArrangerSong.StopPos - sonicArrangerSong.StartPos;
         public int PatternLength => sonicArrangerSong.PatternLength;
@@ -51,6 +52,7 @@ namespace Ambermoon.Data.Legacy.Audio
         {
             this.song = song;
             this.songPlayer = songPlayer;
+            loop = song == Enumerations.Song.Intro; // this loops to provide the start of the main menu song
             reader.Position = 0;
             sonicArrangerFile = new SonicArrangerFile(reader);
             sonicArrangerSong = sonicArrangerFile.Songs[songIndex];
@@ -85,7 +87,7 @@ namespace Ambermoon.Data.Legacy.Audio
             do
             {
                 var readDuration = Math.Min(remainingDuration, 1000.0);
-                buffer.AddRange(stream.ReadUnsigned(Util.Round(readDuration), false));
+                buffer.AddRange(stream.ReadUnsigned(Util.Round(readDuration), loop));
                 remainingDuration -= readDuration;
             } while (remainingDuration > 0 && !stream.EndOfStream);
 

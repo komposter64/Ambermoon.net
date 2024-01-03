@@ -1,4 +1,7 @@
-﻿using Ambermoon.Data.Enumerations;
+﻿using Ambermoon.Data.Audio;
+using Ambermoon.Data.Enumerations;
+using Ambermoon.Data.Legacy.Audio;
+using Ambermoon.Data.Legacy.Characters;
 using Ambermoon.Data.Legacy.Serialization;
 using Ambermoon.Data.Serialization;
 using Ambermoon.Data.Serialization.FileSystem;
@@ -53,12 +56,27 @@ namespace Ambermoon.Data.Legacy
         private readonly ILogger log;
         private readonly bool stopAtFirstError;
         private readonly List<TravelGraphicInfo> travelGraphicInfos = new List<TravelGraphicInfo>(44);
+        private ExecutableData.ExecutableData executableData;
+        public IReadOnlyList<Position> CursorHotspots => executableData?.Cursors.Entries.Select(c => new Position(c.HotspotX, c.HotspotY)).ToList().AsReadOnly();
+        public Places Places { get; private set; }
+        public IGraphicProvider GraphicProvider { get; private set; }
+        public ICharacterManager CharacterManager { get; private set; }
+        public IItemManager ItemManager => executableData?.ItemManager;
+        public IFontProvider FontProvider { get; private set; }
+        public IDataNameProvider DataNameProvider { get; private set; }
+        public ILightEffectProvider LightEffectProvider { get; private set; }
+        public IMapManager MapManager { get; private set; }
+        public ISongManager SongManager { get; private set; }
+        public IIntroData IntroData { get; private set; }
+        public IFantasyIntroData FantasyIntroData { get; private set; }
+        public IOutroData OutroData { get; private set; }
         internal List<Graphic> TravelGraphics { get; } = new List<Graphic>(44);
         public bool Loaded { get; private set; } = false;
         public GameDataSource GameDataSource { get; private set; } = GameDataSource.Memory;
         public string Version { get; private set; } = "Unknown";
         public string Language { get; private set; } = "Unknown";
         public bool Advanced { get; private set; } = false;
+        public TextDictionary Dictionary { get; private set; }
 
         public KeyValuePair<string, IDataReader> GetDictionary()
         {
@@ -123,7 +141,8 @@ namespace Ambermoon.Data.Legacy
             Load(LoadFile, null, CheckFileExists);
         }
 
-        public void LoadFromMemoryZip(Stream stream, Func<ILegacyGameData> fallbackGameDataProvider = null)
+        public void LoadFromMemoryZip(Stream stream, Func<ILegacyGameData> fallbackGameDataProvider = null,
+            Dictionary<string, char> optionalAdditionalFiles = null)
         {
             Loaded = false;
             GameDataSource = GameDataSource.Memory;
@@ -153,7 +172,7 @@ namespace Ambermoon.Data.Legacy
                 return archive.GetEntry(name) != null ||
                     EnsureFallbackData()?.Files?.ContainsKey(name) == true;
             }
-            Load(LoadFile, null, CheckFileExists);
+            Load(LoadFile, null, CheckFileExists, false, optionalAdditionalFiles);
         }
 
         public class GameDataWriter
@@ -478,9 +497,16 @@ namespace Ambermoon.Data.Legacy
         }
 
         void Load(Func<string, IFileContainer> fileLoader, Func<char, Dictionary<string, byte[]>> diskLoader,
-            Func<string, bool> fileExistChecker, bool savesOnly = false)
+            Func<string, bool> fileExistChecker, bool savesOnly = false, Dictionary<string, char> optionalAdditionalFiles = null)
         {
             var ambermoonFiles = new Dictionary<string, char>(savesOnly ? Legacy.Files.AmigaSaveFiles : Legacy.Files.AmigaFiles);
+
+            if (optionalAdditionalFiles != null)
+            {
+                foreach (var additionalFile in optionalAdditionalFiles)
+                    ambermoonFiles.Add(additionalFile.Key, additionalFile.Value);
+            }
+
             var fileReader = new FileReader();
             bool foundNoDictionary = true;
 
@@ -526,6 +552,9 @@ namespace Ambermoon.Data.Legacy
 
             void HandleFileNotFound(string file, char disk)
             {
+                if (optionalAdditionalFiles?.ContainsKey(file) == true)
+                    return; // Don't error on missing optional files
+
                 if (log != null)
                 {
                     log.AppendLine("failed");
@@ -698,6 +727,51 @@ namespace Ambermoon.Data.Legacy
             {
                 // ignore
             }
+
+            executableData = TryLoad(() => ExecutableData.ExecutableData.FromGameData(this));
+
+            if (executableData?.FileList == null && stopAtFirstError)
+                throw new AmbermoonException(ExceptionScope.Data, "Incomplete game data. AM2_CPU is missing.");
+
+            T TryLoad<T>(Func<T> provider) where T : class
+            {
+                try
+                {
+                    return provider();
+                }
+                catch
+                {
+                    if (stopAtFirstError)
+                        throw;
+
+                    return null;
+                }
+            }
+
+            IntroData = TryLoad(() => new IntroData(this));
+            FantasyIntroData = TryLoad(() => new FantasyIntroData(this));
+            OutroData = TryLoad(() => new OutroData(this));
+            var additionalPalettes = new List<Graphic>();
+            if (IntroData?.IntroPalettes != null)
+                additionalPalettes.AddRange(IntroData.IntroPalettes);
+            if (OutroData?.OutroPalettes != null)
+                additionalPalettes.AddRange(OutroData.OutroPalettes);
+            if (FantasyIntroData?.FantasyIntroPalettes != null)
+                additionalPalettes.AddRange(FantasyIntroData.FantasyIntroPalettes);
+            GraphicProvider = TryLoad(() => new GraphicProvider(this, executableData, additionalPalettes));
+            CharacterManager = TryLoad(() => new CharacterManager(this, GraphicProvider));
+            if (executableData?.ItemManager != null && Files.TryGetValue("Object_texts.amb", out var objTexts))
+            {
+                foreach (var objectTextFile in objTexts.Files)
+                    executableData.ItemManager.AddTexts((uint)objectTextFile.Key, Serialization.TextReader.ReadTexts(objectTextFile.Value));
+            }
+            FontProvider = TryLoad(() => new FontProvider(executableData));
+            DataNameProvider = TryLoad(() => new DataNameProvider(executableData));
+            LightEffectProvider = TryLoad(() => new LightEffectProvider(executableData));
+            MapManager = TryLoad(() => new MapManager(this, new MapReader(), new TilesetReader(), new LabdataReader(), stopAtFirstError));
+            SongManager = TryLoad(() => new SongManager(this));
+            Dictionary = TryLoad(() => TextDictionary.Load(new TextDictionaryReader(), GetDictionary()));
+            Places = TryLoad(() => Places.Load(new PlacesReader(), Files["Place_data"].Files[1]));
 
             Loaded = true;
         }

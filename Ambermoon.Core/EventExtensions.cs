@@ -186,7 +186,6 @@ namespace Ambermoon
                     if (trigger == EventTrigger.Eye)
                     {
                         game.ShowMessagePopup(game.DataNameProvider.SeeRoundDiskInFloor);
-                        aborted = true;
                         return null;
                     }
 
@@ -726,6 +725,30 @@ namespace Ambermoon
                                 return mapEventIfFalse;
                             }
                             break;
+                        case ConditionEvent.ConditionType.Attribute:
+                        {
+                            var attribute = game.CurrentPartyMember.Attributes[(Data.Attribute)conditionEvent.ObjectIndex];
+                            var totalValue = attribute.CurrentValue + attribute.BonusValue;
+                            if ((totalValue >= conditionEvent.Count) != (conditionEvent.Value != 0))
+                            {
+                                aborted = mapEventIfFalse == null;
+                                lastEventStatus = false;
+                                return mapEventIfFalse;
+                            }
+                            break;
+                        }
+                        case ConditionEvent.ConditionType.Skill:
+                        {
+                            var skill = game.CurrentPartyMember.Skills[(Skill)conditionEvent.ObjectIndex];
+                            var totalValue = skill.CurrentValue + skill.BonusValue;
+                            if ((totalValue >= conditionEvent.Count) != (conditionEvent.Value != 0))
+                            {
+                                aborted = mapEventIfFalse == null;
+                                lastEventStatus = false;
+                                return mapEventIfFalse;
+                            }
+                            break;
+                        }
                     }
 
                     // For some follow-up events we won't proceed by using Eye, Hand or Mouth.
@@ -1085,9 +1108,21 @@ namespace Ambermoon
                         spawnEvent.X, spawnEvent.Y, spawnEvent.TravelType);
                     lastEventStatus = true;
                     break;
-                case EventType.Unknown:
+                case EventType.RemovePartyMember:
                     // TODO
                     break;
+                case EventType.Delay:
+                    if (!(@event is DelayEvent delayEvent))
+                        throw new AmbermoonException(ExceptionScope.Data, "Invalid delay event.");
+                    game.StartSequence();
+                    game.AddTimedEvent(TimeSpan.FromMilliseconds(delayEvent.Milliseconds), () =>
+                    {
+                        game.EndSequence(false);
+
+                        if (@event.Next != null)
+                            TriggerEventChain(map, game, EventTrigger.Always, x, y, @event.Next, true);
+                    });
+                    return null;
                 default:
                     Console.WriteLine($"Unknown event type found: {@event.Type}");
                     return @event.Next;

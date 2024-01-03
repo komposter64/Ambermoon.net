@@ -1,7 +1,7 @@
 ﻿/*
  * Layer.cs - Render layer enumeration
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -23,8 +23,10 @@ namespace Ambermoon
 {
     public enum Layer
     {
+        // Note: Don't add aliases here as this is used for enumerating over all layers.
         None = -1,
         Map3DBackground, // Color floor, sky, etc
+        Map3DBackgroundFog,
         Map3DCeiling,
         Map3D,
         Billboards3D,
@@ -56,21 +58,28 @@ namespace Ambermoon
         UI,
         Items,
         Text,
+        SmallDigits,
+        MainMenuGraphics,
+        MainMenuText,
+        MainMenuEffects,
         IntroGraphics,
         IntroText,
         IntroEffects,
         OutroGraphics,
         OutroText,
+        FantasyIntroGraphics,
+        FantasyIntroEffects,
+        Misc, // general purpose layer
+        Images, // non-palette high-resolution images
         Effects,
         Cursor,
-        DrugEffect,
-        Misc, // general purpose layer
-        Images // non-palette high-resolution images
+        DrugEffect
     }
 
     public partial class Global
     {
         public const Layer First2DLayer = Layer.MapBackground1;
         public const Layer Last2DLayer = Layer.MapForeground10;
+        public const Layer LastLayer = Layer.DrugEffect;
     }
 }

@@ -23,6 +23,8 @@ using Ambermoon.Data;
 
 namespace Ambermoon.Renderer
 {
+    // NOTE: This won't support non-palette graphics as it uses the color indices
+    // for color replacements.
     internal class SkyShader : TextureShader
     {
         internal static readonly string DefaultLightName = "light";
@@ -40,6 +42,7 @@ namespace Ambermoon.Renderer
             $"uniform sampler2D {DefaultPaletteName};",
             $"uniform float {DefaultColorKeyName};",
             $"uniform float {DefaultLightName};",
+            $"uniform float {DefaultPaletteCountName};",
             $"uniform vec4 {DefaultColorReplaceName}[16];",
             $"uniform float {DefaultUseColorReplaceName};",
             $"in vec2 varTexCoord;",
@@ -54,7 +57,7 @@ namespace Ambermoon.Renderer
             $"    else",
             $"    {{",
             $"        vec4 pixelColor = {DefaultUseColorReplaceName} > 0.5f && colorIndex < 15.5f ? {DefaultColorReplaceName}[int(colorIndex + 0.5f)]",
-            $"            : texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {Shader.PaletteCount}));",
+            $"            : texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {DefaultPaletteCountName}));",
             $"        {DefaultFragmentOutColorName} = vec4(max(vec3(0), pixelColor.rgb + vec3({DefaultLightName}) - 1.0f), pixelColor.a);",
             $"    }}",
             $"}}"
@@ -63,7 +66,7 @@ namespace Ambermoon.Renderer
         protected static string[] SkyVertexShader(State state) => new string[]
         {
             GetVertexShaderHeader(state),
-            $"in ivec2 {DefaultPositionName};",
+            $"in vec2 {DefaultPositionName};",
             $"in ivec2 {DefaultTexCoordName};",
             $"in uint {DefaultLayerName};",
             $"in uint {DefaultPaletteIndexName};",
@@ -81,7 +84,7 @@ namespace Ambermoon.Renderer
             $"    int index = int(mod(float(gl_VertexID), float(4)));",
             $"    float dx = index == 0 || index == 3 ? -0.49f : 0.49f;",
             $"    float dy = index < 2 ? -0.49f : 0.49f;",
-            $"    vec2 pos = vec2(float({DefaultPositionName}.x) + dx, float({DefaultPositionName}.y) + dy);",
+            $"    vec2 pos = vec2({DefaultPositionName}.x + dx, {DefaultPositionName}.y + dy);",
             $"    varTexCoord = atlasFactor * vec2({DefaultTexCoordName}.x, {DefaultTexCoordName}.y);",
             $"    palIndex = float({DefaultPaletteIndexName});",
             $"    gl_Position = {DefaultProjectionMatrixName} * {DefaultModelViewMatrixName} * vec4(pos, 1.0f - {DefaultZName} - float({DefaultLayerName}) * 0.00001f, 1.0f);",

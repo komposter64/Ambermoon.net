@@ -1,7 +1,7 @@
 ﻿/*
  * Layout.cs - Handles most of the UI interactions
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -539,6 +539,7 @@ namespace Ambermoon.UI
         public bool TransportEnabled { get; set; } = false;
         public event Action<int, int, MouseButtons> BattleFieldSlotClicked;
         public event Action DraggedItemDropped;
+        public int GlyphHeight { get; }
 
         public Layout(Game game, IRenderView renderView, IItemManager itemManager)
         {
@@ -549,6 +550,8 @@ namespace Ambermoon.UI
             textLayer = renderView.GetLayer(Layer.Text);
             this.itemManager = itemManager;
             byte paletteIndex = (byte)(renderView.GraphicProvider.PrimaryUIPaletteIndex - 1);
+
+            GlyphHeight = renderView.FontProvider.GetFont().GlyphHeight;
 
             sprite = RenderView.SpriteFactory.Create(320, 163, true) as ILayerSprite;
             sprite.Layer = renderLayer;
@@ -573,6 +576,12 @@ namespace Ambermoon.UI
 
             SetLayout(LayoutType.None);
         }
+
+        public Rect GetTextRect(Rect rect) => Global.GetTextRect(GlyphHeight, rect);
+
+        public Rect GetTextRect(Position position, Size size) => GetTextRect(new Rect(position, size));
+
+        public Rect GetTextRect(int x, int y, int width, int height) => GetTextRect(new Rect(x, y, width, height));
 
         public void ShowPortraitArea(bool show)
         {
@@ -965,8 +974,9 @@ namespace Ambermoon.UI
                 new Rect(48, 0, maxTextWidth, int.MaxValue),
                 new Size(Global.GlyphWidth, Global.GlyphLineHeight));
             var textBounds = new Rect(48, 95, maxTextWidth, Math.Max(minLines + 1, processedText.LineCount) * Global.GlyphLineHeight);
-            var renderText = RenderView.RenderTextFactory.Create(textLayer,
-                processedText, TextColor.BrightGray, true, textBounds, textAlign);
+            var renderText = RenderView.RenderTextFactory.Create(
+                (byte)(RenderView.GraphicProvider.DefaultTextPaletteIndex - 1), textLayer,
+                processedText, TextColor.BrightGray, true, GetTextRect(textBounds), textAlign);
             renderText.PaletteIndex = game.TextPaletteIndex;
             int popupRows = Math.Max(minLines + 2, 2 + (textBounds.Height + 36) / 16);
             activePopup = new Popup(game, RenderView, new Position(32, 74), 14, popupRows, false, displayLayerOffset)
@@ -1043,7 +1053,7 @@ namespace Ambermoon.UI
             bool extended = game.Configuration.ExtendedSavegameSlots;
             if (extended)
             {
-                var additionalSavegameSlots = game.Configuration.GetOrCreateCurrentAdditionalSavegameSlots();
+                var additionalSavegameSlots = game.GetAdditionalSavegameSlots();
                 int remaining = Game.NumAdditionalSavegameSlots - Math.Min(Game.NumAdditionalSavegameSlots, additionalSavegameSlots?.Names?.Length ?? 0);
                 if (additionalSavegameSlots?.Names != null)
                     savegameNames = Enumerable.Concat(savegameNames, additionalSavegameSlots.Names.Take(Game.NumAdditionalSavegameSlots).Select(n => n ?? "")).ToArray();
@@ -1102,7 +1112,7 @@ namespace Ambermoon.UI
             bool extended = game.Configuration.ExtendedSavegameSlots;
             if (extended)
             {
-                var additionalSavegameSlots = game.Configuration.GetOrCreateCurrentAdditionalSavegameSlots();
+                var additionalSavegameSlots = game.GetAdditionalSavegameSlots();
                 int remaining = Game.NumAdditionalSavegameSlots - Math.Min(Game.NumAdditionalSavegameSlots, additionalSavegameSlots?.Names?.Length ?? 0);
                 if (additionalSavegameSlots?.Names != null)
                     savegameNames = Enumerable.Concat(savegameNames, additionalSavegameSlots.Names.Take(Game.NumAdditionalSavegameSlots).Select(n => n ?? "")).ToArray();
@@ -1134,7 +1144,7 @@ namespace Ambermoon.UI
                     return;
                 }
 
-                var additionalSavegameSlots = game.Configuration.GetOrCreateCurrentAdditionalSavegameSlots();
+                var additionalSavegameSlots = game.GetAdditionalSavegameSlots();
 
                 if (string.IsNullOrEmpty(savegameNames[slot - 1]))
                 {
@@ -1166,7 +1176,7 @@ namespace Ambermoon.UI
         }
 
         // TODO: add more languages later and/or add these texts to the new game data format
-        const int OptionCount = 19;
+        const int OptionCount = 21;
         const int OptionsPerPage = 7;
         static readonly Dictionary<GameLanguage, string[]> OptionNames = new Dictionary<GameLanguage, string[]>
         {
@@ -1188,17 +1198,16 @@ namespace Ambermoon.UI
                     "Button Tooltips anzeigen",
                     "Stats Tooltips anzeigen",
                     "Runen als Text anzeigen",
-                    "Cheats aktivieren",
                     "3D Boden und Decke",
+                    "3D Distanz-Nebel",
                     // Page3
                     "Zusätzliche Spielstände",
                     "Externe Musik",
                     "Pyrdacor Logo zeigen",
-                    "Thalion Logo zeigen",
-                    "Info beim Speichern/Laden"
-                    // TODO
-                    //"Intro anzeigen",
-                    //"Fantasy Intro anzeigen",
+                    "Fantasy Intro zeigen",
+                    "Intro anzeigen",
+                    "Info beim Speichern/Laden",
+                    "Cheats aktivieren",
                 }
             },
             {
@@ -1219,19 +1228,78 @@ namespace Ambermoon.UI
                     "Show button tooltips",
                     "Show stats tooltips",
                     "Show runes as text",
-                    "Enable cheats",
+                    "3D distance fog",
                     "3D floor and ceiling",
                     // Page 3
                     "Additional saveslots",
                     "External music",
                     "Show Pyrdacor logo",
-                    "Show Thalion logo",
-                    "Show save/load info"
-                    // TODO
-                    //"Show intro",
-                    //"Show fantasy intro",
+                    "Show fantasy intro",
+                    "Show intro",
+                    "Show save/load info",
+                    "Enable cheats",
                 }
-            }
+            },
+            {
+                GameLanguage.French,
+                new string[OptionCount]
+                {
+                    // Page 1
+                    "Musique",
+                    "Volume",
+                    "Résolution",
+                    "Plein écran",
+                    "Filtre graphique",
+                    "Incrustation graphique",
+                    "Effet",
+                    // Page 2
+                    "Vitesse de combat",
+                    "Mouvement 3D",
+                    "Infobulles des boutons",
+                    "Infobulles des statistiques",
+                    "Afficher les runes en texte",                    
+                    "Sol et plafond en 3D",
+                    "Brouillard de distance 3D",
+                    // Page 3
+                    "Sauvegardes additionnelles",
+                    "Musique externe",
+                    "Afficher Pyrdacor logo",
+                    "Afficher fantasy intro",
+                    "Afficher intro",
+                    "Messages de sauvegarde",
+                    "Activer les cheats",
+                }
+            },
+            {
+                GameLanguage.Polish,
+                new string[OptionCount]
+                {
+                    // Page 1
+                    "Muzyka",
+                    "Głośność",
+                    "Rozdzielczość",
+                    "Pełny ekran",
+                    "Filtr graficzny",
+                    "Nakładka graficzna",
+                    "Efekt",
+                    // Page 2
+                    "Szybkość walki",
+                    "Ruch 3D",
+                    "Pokaż opisy przycisków",
+                    "Pokaż opisy statystyk",
+                    "Pokaż runy jako tekst",
+                    "Podłoga i sufit 3D",
+                    "Mgła dystansowa 3D",
+                    // Page 3
+                    "Dodatkowe miejsca zapisu",
+                    "Zewnętrzna muzyka",
+                    "Pokaż logo Pyrdacora",
+                    "Pokaż fantasy intro",
+                    "Pokaż intro",
+                    "Pokaż inf. zapis/odczyt",
+                    "Włącz cheaty",
+                }
+            }            
         };
         static readonly Dictionary<GameLanguage, string[]> FloorAndCeilingValues = new Dictionary<GameLanguage, string[]>
         {
@@ -1254,6 +1322,26 @@ namespace Ambermoon.UI
                     "Ceiling",
                     "Both"
                 }
+            },
+            {
+                GameLanguage.French,
+                new string[4]
+                {
+                    "Aucun",
+                    "Sol",
+                    "Plafond",
+                    "Les deux"
+                }
+            },
+            {
+                GameLanguage.Polish,
+                new string[4]
+                {
+                    "Żadna",
+                    "Podłoga",
+                    "Sufit",
+                    "Obie"
+                }
             }
         };
         static readonly Dictionary<GameLanguage, string> DefaultBattleSpeedName = new Dictionary<GameLanguage, string>
@@ -1263,6 +1351,12 @@ namespace Ambermoon.UI
             },
             {
                 GameLanguage.English, "Default"
+            },
+            {
+                GameLanguage.French, "Défaut"
+            },
+            {
+                GameLanguage.Polish, "Domyślna"
             }
         };
         static readonly Dictionary<GameLanguage, string[]> Movement3DValues = new Dictionary<GameLanguage, string[]>
@@ -1277,6 +1371,22 @@ namespace Ambermoon.UI
             },
             {
                 GameLanguage.English,
+                new string[2]
+                {
+                    "WASD",
+                    "QWEASD"
+                }
+            },
+            {
+                GameLanguage.French,
+                new string[2]
+                {
+                    "WASD",
+                    "QWEASD"
+                }
+            },
+            {
+                GameLanguage.Polish,
                 new string[2]
                 {
                     "WASD",
@@ -1316,17 +1426,16 @@ namespace Ambermoon.UI
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleTooltips())),
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => TogglePlayerStatsTooltips())),
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleAutoDerune())),
-                KeyValuePair.Create("", game.Configuration.IsMobile ? null : (Action<int, string>)((index, _) => ToggleCheats())),
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleFloorAndCeiling())),
+                KeyValuePair.Create("", game.Configuration.ShowFloor && game.Configuration.ShowCeiling ? ((index, _) => ToggleFog()) : nullOptionAction),
                 // Page 3
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleExtendedSaves())),
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleExternalMusic())),
                 KeyValuePair.Create("", (Action<int, string>)((index, _) => TogglePyrdacorLogo())),
-                KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleThalionLogo())),
-                KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleSaveLoadInfo()))
-                // TODO: later
-                //KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleIntro())),              
-                //KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleFantasyIntro())),
+                KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleFantasyIntro())),
+                KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleIntro())),
+                KeyValuePair.Create("", (Action<int, string>)((index, _) => ToggleSaveLoadInfo())),
+                KeyValuePair.Create("", game.Configuration.IsMobile ? null : (Action<int, string>)((index, _) => ToggleCheats())),
             };
             listBox = activePopup.AddOptionsListBox(options.Take(OptionsPerPage).ToList());
 
@@ -1347,6 +1456,15 @@ namespace Ambermoon.UI
                 optionString += new string(' ', remainingSpace);
                 optionString += value;
                 listBox.SetItemText(index, optionString);
+            }
+            void SetOptionAction(int optionIndex, Action<int, string> action)
+            {
+                int index = optionIndex - page * OptionsPerPage;
+
+                if (index < 0 || index >= OptionsPerPage)
+                    return;
+
+                listBox.SetItemAction(index, action);
             }
             string GetFloorAndCeilingValueString()
             {
@@ -1380,16 +1498,18 @@ namespace Ambermoon.UI
             void SetTooltips() => SetOptionString(9, game.Configuration.ShowButtonTooltips ? on : off);
             void SetPlayerStatsTooltips() => SetOptionString(10, game.Configuration.ShowPlayerStatsTooltips ? on : off);
             void SetAutoDerune() => SetOptionString(11, game.Configuration.AutoDerune ? on : off);
-            void SetCheats() => SetOptionString(12, cheatsEnabled ? on : off);
-            void SetFloorAndCeiling() => SetOptionString(13, GetFloorAndCeilingValueString());
+            void SetFloorAndCeiling() => SetOptionString(12, GetFloorAndCeilingValueString());
+            void SetFog() => SetOptionString(13, game.Configuration.ShowFog ? on : off);
             // Page 3
             void SetExtendedSaves() => SetOptionString(14, game.Configuration.ExtendedSavegameSlots ? on : off);
             void SetExternalMusic() => SetOptionString(15, game.Configuration.ExternalMusic ? on : off);
             void SetPyrdacorLogo() => SetOptionString(16, game.Configuration.ShowPyrdacorLogo ? on : off);
-            void SetThalionLogo() => SetOptionString(17, game.Configuration.ShowThalionLogo ? on : off);
-            void SetSaveLoadInfo() => SetOptionString(18, game.Configuration.ShowSaveLoadMessage ? on : off);
-            // TODO: void SetIntro() => SetOptionString(?, game.Configuration.ShowIntro ? on : off);
-            // TODO: void SetFantasyIntro() => SetOptionString(?, game.Configuration.ShowFantasyIntro ? on : off);
+            void SetFantasyIntro() => SetOptionString(17, game.Configuration.ShowFantasyIntro ? on : off);
+            void SetIntro() => SetOptionString(18, game.Configuration.ShowIntro ? on : off);
+            void SetSaveLoadInfo() => SetOptionString(19, game.Configuration.ShowSaveLoadMessage ? on : off);
+            void SetCheats() => SetOptionString(20, cheatsEnabled ? on : off);
+
+            void UpdateShowFogOption() => SetOptionAction(13, game.Configuration.ShowFloor && game.Configuration.ShowCeiling ? ((index, _) => ToggleFog()) : nullOptionAction);
 
             void ShowOptions()
             {
@@ -1410,20 +1530,19 @@ namespace Ambermoon.UI
                         Set3DMovement();
                         SetTooltips();
                         SetPlayerStatsTooltips();
-                        SetAutoDerune();
-                        SetCheats();
-                        SetFloorAndCeiling();                        
+                        SetAutoDerune();                        
+                        SetFloorAndCeiling();
+                        SetFog();
                         break;
                     case 2:
                         SetExtendedSaves();
                         SetExternalMusic();
                         SetPyrdacorLogo();
-                        SetThalionLogo();
+                        SetFantasyIntro();
+                        SetIntro();
                         SetSaveLoadInfo();
+                        SetCheats();
                         break;
-                    // TODO
-                    //SetIntro();
-                    //SetFantasyIntro();
                 }
             }
 
@@ -1513,6 +1632,12 @@ namespace Ambermoon.UI
                 SetPlayerStatsTooltips();
                 changedConfiguration = true;
             }
+            void ToggleFog()
+            {
+                game.Configuration.ShowFog = !game.Configuration.ShowFog;
+                SetFog();
+                changedConfiguration = true;
+            }
             void ToggleFloorAndCeiling()
             {
                 if (!game.Configuration.ShowFloor && !game.Configuration.ShowCeiling)
@@ -1534,6 +1659,9 @@ namespace Ambermoon.UI
                     game.Configuration.ShowCeiling = false;
                 }
                 SetFloorAndCeiling();
+                if ((!game.Configuration.ShowFloor || !game.Configuration.ShowCeiling) && game.Configuration.ShowFog)
+                    ToggleFog();
+                UpdateShowFogOption();
                 changedConfiguration = true;
             }
             void ToggleExtendedSaves()
@@ -1566,10 +1694,16 @@ namespace Ambermoon.UI
                 SetPyrdacorLogo();
                 changedConfiguration = true;
             }
-            void ToggleThalionLogo()
+            void ToggleFantasyIntro()
             {
-                game.Configuration.ShowThalionLogo = !game.Configuration.ShowThalionLogo;
-                SetThalionLogo();
+                game.Configuration.ShowFantasyIntro = !game.Configuration.ShowFantasyIntro;
+                SetFantasyIntro();
+                changedConfiguration = true;
+            }
+            void ToggleIntro()
+            {
+                game.Configuration.ShowIntro = !game.Configuration.ShowIntro;
+                SetIntro();
                 changedConfiguration = true;
             }
             void ToggleEffects()
@@ -2677,6 +2811,24 @@ namespace Ambermoon.UI
                             game.InputEnable = true;
                         return;
                     }
+                    else if (item.Spell == Spell.MountWasp)
+                    {
+                        if (game.TravelType != TravelType.Walk)
+                        {
+                            SetInventoryMessage(game.DataNameProvider.WrongPlaceToUseItem, true);
+                        }
+                        else
+                        {
+                            itemGrid.HideTooltip();
+                            ItemAnimation.Play(game, RenderView, ItemAnimation.Type.Enchant, itemGrid.GetSlotPosition(slot), () =>
+                            {
+                                if (wasInputEnabled)
+                                    game.InputEnable = true;
+                                game.UpdateCursor();
+                                game.UseSpell(game.CurrentInventory, item.Spell, itemGrid, true);
+                            });
+                        }
+                    }
                     else if (item.Spell == Spell.CallEagle)
                     {
                         if (game.TravelType != TravelType.Walk)
@@ -2728,7 +2880,9 @@ namespace Ambermoon.UI
                             if (itemSlot.NumRemainingCharges <= 1 && CanConsumeItem(item, itemSlot))
                             {
                                 if (game.CurrentInventory == usingPlayer)
+                                {
                                     DestroyItem(itemSlot, TimeSpan.FromMilliseconds(25), true, Done);
+                                }
                                 else
                                 {
                                     var item = itemManager.GetItem(itemSlot.ItemIndex);
@@ -3634,7 +3788,7 @@ namespace Ambermoon.UI
 
                 portraitAnimation = new PortraitAnimation
                 {
-                    StartTicks = game.BattleActive ? game.CurrentBattleTicks : game.CurrentAnimationTicks,
+                    StartTicks = game.BattleActive ? game.CurrentNormalizedBattleTicks : game.CurrentAnimationTicks,
                     Offset = yOffset,
                     InitialOffset = yOffset,
                     PrimarySprite = sprite,
@@ -3735,7 +3889,7 @@ namespace Ambermoon.UI
             if (consumed)
             {
                 ItemAnimation.Play(game, RenderView, ItemAnimation.Type.Consume, animationPosition ?? itemGrid.GetSlotPosition(slotIndex),
-                    finishAction, initialDelay);
+                    finishAction, initialDelay, 300, () => itemGrid.SlotVisible(slotIndex));
                 if (applyRemoveEffects)
                 {
                     game.AddTimedEvent(initialDelay + TimeSpan.FromMilliseconds(200), () =>
@@ -3749,7 +3903,7 @@ namespace Ambermoon.UI
             else
             {
                 ItemAnimation.Play(game, RenderView, ItemAnimation.Type.Destroy, animationPosition ?? itemGrid.GetSlotPosition(slotIndex),
-                    finishAction, initialDelay, null, itemManager.GetItem(itemSlot.ItemIndex));
+                    finishAction, initialDelay, null, itemManager.GetItem(itemSlot.ItemIndex), 300, () => itemGrid.SlotVisible(slotIndex));
                 if (applyRemoveEffects)
                 {
                     game.AddTimedEvent(initialDelay, () =>
@@ -3775,14 +3929,30 @@ namespace Ambermoon.UI
             return null;
         }
 
-        public Position GetItemSlotPosition(ItemSlot itemSlot)
+        public Position GetItemSlotPosition(ItemSlot itemSlot, bool allowScrollIntoView)
         {
             foreach (var itemGrid in itemGrids)
             {
                 int slotIndex = itemGrid.SlotFromItemSlot(itemSlot);
 
                 if (slotIndex != -1)
+                {
+                    if (allowScrollIntoView && !itemGrid.SlotVisible(slotIndex))
+                    {
+                        int scrollOffset = slotIndex;
+
+                        if (scrollOffset % Inventory.VisibleWidth != 0)
+                            scrollOffset -= scrollOffset % Inventory.VisibleWidth;
+
+                        itemGrid.ScrollTo(scrollOffset);
+                    }
+                    else if (!itemGrid.SlotVisible(slotIndex))
+                    {
+                        return null;
+                    }
+
                     return itemGrid.GetSlotPosition(slotIndex);
+                }
             }
 
             return null;
@@ -3845,8 +4015,10 @@ namespace Ambermoon.UI
 
                     if (text == null)
                     {
-                        text = portraitNames[slot] = RenderView.RenderTextFactory.Create(textLayer, name, TextColor.PartyMember, true,
-                            new Rect(Global.PartyMemberPortraitAreas[slot].Left + 2, Global.PartyMemberPortraitAreas[slot].Top + 31, 30, 6),
+                        text = portraitNames[slot] = RenderView.RenderTextFactory.Create(
+                            game.PrimaryUIPaletteIndex, 
+                            textLayer, name, TextColor.PartyMember, true,
+                            GetTextRect(Global.PartyMemberPortraitAreas[slot].Left + 2, Global.PartyMemberPortraitAreas[slot].Top + 31, 30, 6),
                             TextAlign.Center);
                     }
                     else
@@ -3874,7 +4046,7 @@ namespace Ambermoon.UI
                 sprite.X = Global.PartyMemberPortraitAreas[slot].Left + 1;
                 sprite.Y = Global.PartyMemberPortraitAreas[slot].Top + 1;
                 sprite.TextureAtlasOffset = textureAtlas.GetOffset(Graphics.UICustomGraphicOffset + (uint)UICustomGraphic.PortraitBackground);
-                sprite.PaletteIndex = 52;
+                sprite.PaletteIndex = (byte)(RenderView.GraphicProvider.PrimaryUIPaletteIndex + 3 - 1);
                 sprite.Visible = true;
             }
 
@@ -4225,7 +4397,7 @@ namespace Ambermoon.UI
             {
                 if (activeTooltipText == null)
                 {
-                    activeTooltipText = RenderView.RenderTextFactory.Create();
+                    activeTooltipText = RenderView.RenderTextFactory.Create((byte)(RenderView.GraphicProvider.DefaultTextPaletteIndex - 1));
                     activeTooltipText.Shadow = true;
                     activeTooltipText.DisplayLayer = 250;
                     activeTooltipText.Layer = RenderView.GetLayer(Layer.Text);
@@ -4255,7 +4427,7 @@ namespace Ambermoon.UI
                 if (y < 2 && cursorPosition.Y + text.LineCount * Global.GlyphLineHeight + 16 <= Global.VirtualScreenHeight)
                     y = cursorPosition.Y + 16;
                 var textArea = new Rect(x, y, textWidth, text.LineCount * Global.GlyphLineHeight);
-                activeTooltipText.Place(textArea, tooltip.TextAlign);
+                activeTooltipText.Place(GetTextRect(textArea), tooltip.TextAlign);
 
                 if (tooltip.BackgroundColor != null)
                 {
@@ -4264,7 +4436,7 @@ namespace Ambermoon.UI
                     if (activeTooltipBackground == null)
                     {
                         activeTooltipBackground = RenderView.ColoredRectFactory.Create(textArea.Width, textArea.Height, tooltip.BackgroundColor, 248);
-                        activeTooltipBackground.Layer = RenderView.GetLayer(Layer.IntroEffects);
+                        activeTooltipBackground.Layer = RenderView.GetLayer(Layer.MainMenuEffects);
                         activeTooltipBackground.Visible = true;
 
                         activeTooltipBorders[0] = RenderView.ColoredRectFactory.Create(textArea.Width, 1, Render.Color.Black, 249);
@@ -4326,7 +4498,7 @@ namespace Ambermoon.UI
         public UIText AddText(Rect rect, IText text, TextColor color = TextColor.White,
             TextAlign textAlign = TextAlign.Left, byte displayLayer = 2)
         {
-            var uiText = new UIText(RenderView, game.UIPaletteIndex, text, rect, displayLayer, color, true, textAlign, false);
+            var uiText = new UIText(RenderView, game.UIPaletteIndex, text, GetTextRect(rect), displayLayer, color, true, textAlign, false);
             texts.Add(uiText);
             return uiText;
         }
@@ -4342,7 +4514,7 @@ namespace Ambermoon.UI
         public UIText CreateScrollableText(Rect rect, IText text, TextColor color = TextColor.White,
             TextAlign textAlign = TextAlign.Left, byte displayLayer = 2, bool shadow = true, byte? paletteIndex = null)
         {
-            var scrollableText = new UIText(RenderView, paletteIndex ?? game.UIPaletteIndex, text, rect,
+            var scrollableText = new UIText(RenderView, paletteIndex ?? game.UIPaletteIndex, text, GetTextRect(rect),
                 displayLayer, color, shadow, textAlign, true, game.AddTimedEvent);
             scrollableText.FreeScrollingStarted += () =>
             {
@@ -4579,7 +4751,7 @@ namespace Ambermoon.UI
             if (portraitAnimation != null)
             {
                 const int animationTime = (int)Game.TicksPerSecond;
-                uint elapsed = (game.BattleActive ? game.CurrentBattleTicks : game.CurrentAnimationTicks) - portraitAnimation.StartTicks;
+                uint elapsed = (game.BattleActive ? game.CurrentNormalizedBattleTicks : game.CurrentAnimationTicks) - portraitAnimation.StartTicks;
 
                 if (elapsed > animationTime)
                 {
@@ -4620,7 +4792,7 @@ namespace Ambermoon.UI
                     slotMarker.Sprite.Visible = true;
                 else
                 {
-                    uint diff = game.CurrentBattleTicks - slotMarker.BlinkStartTicks.Value;
+                    uint diff = game.CurrentNormalizedBattleTicks - slotMarker.BlinkStartTicks.Value;
                     if (slotMarker.ToggleColors)
                     {
                         var slotColor = (diff % (TicksPerBlink * 2) < TicksPerBlink) ? BattleFieldSlotColor.Orange : BattleFieldSlotColor.Yellow;
@@ -4815,8 +4987,16 @@ namespace Ambermoon.UI
         {
             if (game.CurrentWindow.Window == Window.Inventory)
             {
-                itemGrids[0]?.ClearItemClickEventHandlers();
-                itemGrids[1]?.ClearItemClickEventHandlers();
+                if (itemGrids[0] != null)
+                {
+                    itemGrids[0].ClearItemClickEventHandlers();
+                    itemGrids[0].DisableDrag = false;
+                }
+                if (itemGrids[1] != null)
+                {
+                    itemGrids[1].ClearItemClickEventHandlers();
+                    itemGrids[1].DisableDrag = false;
+                }
             }
             game.AbortPickingTargetInventory();
         }

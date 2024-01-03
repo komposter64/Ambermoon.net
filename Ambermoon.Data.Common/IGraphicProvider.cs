@@ -53,10 +53,12 @@ namespace Ambermoon.Data
         CombatGraphicInfo GetCombatGraphicInfo(CombatGraphicIndex index);
         float GetMonsterRowImageScaleFactor(MonsterRow row);
         byte PaletteIndexFromColorIndex(Map map, byte colorIndex);
+        byte DefaultTextPaletteIndex { get; }
         byte PrimaryUIPaletteIndex { get; }
         byte SecondaryUIPaletteIndex { get; }
         byte AutomapPaletteIndex { get; }
         byte FirstIntroPaletteIndex { get; }
         byte FirstOutroPaletteIndex { get; }
+        byte FirstFantasyIntroPaletteIndex { get; }
     }
 }

@@ -7,11 +7,11 @@ namespace Ambermoon
 {
     class Program
     {
-        const string ConfigurationFileName = "ambermoon.cfg";
+        const string ConfigurationFileName = Configuration.ConfigurationFileName;
 
         static Configuration LoadConfig()
         {
-            var path = Path.Combine(Configuration.ExecutableDirectoryPath, ConfigurationFileName);
+            var path = Path.Combine(Configuration.BundleDirectory, ConfigurationFileName);
             var configuration = Configuration.Load(path);
 
             if (configuration != null)
@@ -23,7 +23,7 @@ namespace Ambermoon
 
         static void SaveConfig(Configuration configuration)
         {
-            var path = Path.Combine(Configuration.ExecutableDirectoryPath, ConfigurationFileName);
+            var path = Path.Combine(Configuration.BundleDirectory, ConfigurationFileName);
 
             try
             {
@@ -50,17 +50,19 @@ namespace Ambermoon
 
             try
             {
-                Environment.CurrentDirectory = Configuration.ExecutableDirectoryPath;
+                Environment.CurrentDirectory = Configuration.ReadonlyBundleDirectory;
             }
             catch
             {
                 // ignore
             }
 
+            Configuration.FixMacOSPaths();
             var configuration = LoadConfig();
             configuration.UpgradeAdditionalSavegameSlots();
             configuration.SaveRequested += () => SaveConfig(configuration);
             var gameWindow = new GameWindow();
+            int exitCode = 0;
 
             try
             {
@@ -69,12 +71,13 @@ namespace Ambermoon
             catch (Exception ex)
             {
                 PrintException(ex);
-                Environment.Exit(1);
+                exitCode = 1;
             }
             finally
             {
                 SaveConfig(configuration);
                 DotnetCleanup();
+                Environment.Exit(exitCode);
             }
         }
 

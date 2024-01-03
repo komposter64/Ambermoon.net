@@ -1,7 +1,7 @@
 ﻿/*
  * AlphaTextureShader.cs - Shader for textured objects with alpha channel
  *
- * Copyright (C) 2020-2021  Robert Schneckenhaus <robert.schneckenhaus@web.de>
+ * Copyright (C) 2020-2023  Robert Schneckenhaus <robert.schneckenhaus@web.de>
  *
  * This file is part of Ambermoon.net.
  *
@@ -28,9 +28,11 @@ namespace Ambermoon.Renderer
         protected static string[] AlphaTextureFragmentShader(State state) => new string[]
         {
             GetFragmentShaderHeader(state),
+            $"uniform float {DefaultUsePaletteName};",
             $"uniform sampler2D {DefaultSamplerName};",
             $"uniform sampler2D {DefaultPaletteName};",
             $"uniform float {DefaultColorKeyName};",
+            $"uniform float {DefaultPaletteCountName};",
             $"in vec2 varTexCoord;",
             $"flat in float palIndex;",
             $"flat in float maskColIndex;",
@@ -38,26 +40,37 @@ namespace Ambermoon.Renderer
             $"",
             $"void main()",
             $"{{",
-            $"    float colorIndex = texture({DefaultSamplerName}, varTexCoord).r * 255.0f;",
-            $"    ",
-            $"    if (colorIndex < 0.5f || a < 0.001f)",
-            $"        discard;",
+            $"    vec4 pixelColor = vec4(0);",
+            $"    if ({DefaultUsePaletteName} > 0.5f)",
+            $"    {{",
+            $"        float colorIndex = texture({DefaultSamplerName}, varTexCoord).r * 255.0f;",
+            $"        ",
+            $"        if (colorIndex < 0.5f)",
+            $"            discard;",
+            $"        else",
+            $"        {{",
+            $"            if (colorIndex >= 31.5f)",
+            $"                colorIndex = 0.0f;",
+            $"            pixelColor = texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {DefaultPaletteCountName}));",
+            $"        }}",
+            $"    }}",
             $"    else",
             $"    {{",
-            $"        if (colorIndex >= 31.5f)",
-            $"            colorIndex = 0.0f;",
-            $"        vec4 pixelColor = texture({DefaultPaletteName}, vec2((colorIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {Shader.PaletteCount}));",
-            $"        if (maskColIndex >= 0.5f)",
-            $"            pixelColor = texture({DefaultPaletteName}, vec2((maskColIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {Shader.PaletteCount}));",
-            $"        {DefaultFragmentOutColorName} = vec4(pixelColor.rgb, pixelColor.a * a);",
+            $"        pixelColor = texture({DefaultSamplerName}, varTexCoord);",
+            $"        if (pixelColor.a < 0.5f)",
+            $"            discard;",
             $"    }}",
+            $"    ",
+            $"    if (maskColIndex > 0.5f)",
+            $"        pixelColor = texture({DefaultPaletteName}, vec2((maskColIndex + 0.5f) / 32.0f, (palIndex + 0.5f) / {DefaultPaletteCountName}));",
+            $"    {DefaultFragmentOutColorName} = vec4(pixelColor.rgb, pixelColor.a * a);",
             $"}}"
         };
 
         protected static string[] AlphaTextureVertexShader(State state) => new string[]
         {
             GetVertexShaderHeader(state),
-            $"in ivec2 {DefaultPositionName};",
+            $"in vec2 {DefaultPositionName};",
             $"in ivec2 {DefaultTexCoordName};",
             $"in uint {DefaultLayerName};",
             $"in uint {DefaultPaletteIndexName};",
@@ -75,7 +88,7 @@ namespace Ambermoon.Renderer
             $"void main()",
             $"{{",
             $"    vec2 atlasFactor = vec2(1.0f / float({DefaultAtlasSizeName}.x), 1.0f / float({DefaultAtlasSizeName}.y));",
-            $"    vec2 pos = vec2(float({DefaultPositionName}.x) + 0.49f, float({DefaultPositionName}.y) + 0.49f);",
+            $"    vec2 pos = vec2({DefaultPositionName}.x + 0.49f, {DefaultPositionName}.y + 0.49f);",
             $"    varTexCoord = atlasFactor * vec2({DefaultTexCoordName}.x, {DefaultTexCoordName}.y);",
             $"    palIndex = float({DefaultPaletteIndexName});",
             $"    a = float({DefaultAlphaName}) / 255.0f;",
